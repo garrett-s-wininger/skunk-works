@@ -1,15 +1,26 @@
 package main
 
 import (
-        "io"
+        "html/template"
         "log"
         "net/http"
+        "path/filepath"
 )
 
 func main() {
+        paths := []string{
+                filepath.Join("templates/index.tmpl"),
+        }
+
+        templ := template.Must(template.ParseFiles(paths...))
+
         // TODO(garrett): Proper multiplexing
         handler := func(w http.ResponseWriter, req *http.Request) {
-                io.WriteString(w, "Responding!\n")
+                err := templ.Execute(w, nil)
+
+                if err != nil {
+                        log.Fatal("Template execution failure: %s", err)
+                }
         }
 
         http.HandleFunc("/", handler)
