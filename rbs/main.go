@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -21,6 +23,9 @@ func index(w http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
+	port := flag.Int("p", 8080, "Requested port number to listen on")
+	flag.Parse()
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/{$}", index)
@@ -28,6 +33,6 @@ func main() {
 		"/static/",
 		http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 
-	// TODO(garrett): Support command line flags for port selection
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	listenAddress := fmt.Sprintf("0.0.0.0:%d", *port)
+	log.Fatal(http.ListenAndServe(listenAddress, mux))
 }
