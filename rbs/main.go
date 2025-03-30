@@ -1,10 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"crypto/rand"
 	"flag"
 	"fmt"
+	"github.com/garrett-s-wininger/skunk-works/rbs/oidc"
 	"html/template"
 	"io/ioutil"
 	"log"
@@ -16,17 +16,17 @@ import (
 )
 
 var requiredConfigs = []string{
-	"applicationUri",
-	"oidcClientId",
+	"applicationURI",
+	"oidcClientID",
 	"oidcClientSecret",
 	"oidcDomain",
 }
 
 type ServerConfig struct {
-	ApplicationUri   *url.URL
-	OidcClientId     string
-	OidcClientSecret string // TODO(garrett): Investigate SGX or similar storage
-	OidcDomain       *url.URL
+	ApplicationURI   *url.URL
+	OIDCClientID     string
+	OIDCClientSecret string // TODO(garrett): Investigate SGX or similar storage
+	OIDCDomain       *url.URL
 }
 
 var serverConfig ServerConfig
@@ -45,60 +45,36 @@ func index(w http.ResponseWriter, r *http.Request) {
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
-	queryParameters := url.Values{}
-	queryParameters.Add("response_type", "code")
-	queryParameters.Add("scope", "openid profile")
-	queryParameters.Add("client_id", serverConfig.OidcClientId)
+	redirectSettings := oidc.RedirectSettings{
+		CallbackURI:  serverConfig.ApplicationURI.JoinPath("oidc", "callback"),
+		AuthEndpoint: serverConfig.OIDCDomain.JoinPath("oauth2", "v1", "authorize"),
+		ClientID:     serverConfig.OIDCClientID,
+		// TODO(garrett): This value should be bound to a session
+		State: rand.Text(),
+	}
 
-	// TODO(garrett): This value should be bound to a session
-	queryParameters.Add("state", rand.Text())
-
-	callbackUri := serverConfig.ApplicationUri.JoinPath("oidc", "callback")
-	queryParameters.Add("redirect_uri", callbackUri.String())
-
-	oidcAuthEndpoint := serverConfig.OidcDomain.JoinPath("oauth2", "v1", "authorize")
-	oidcAuthEndpoint.RawQuery = queryParameters.Encode()
-	http.Redirect(w, r, oidcAuthEndpoint.String(), http.StatusFound)
+	oidc.Redirect(w, r, redirectSettings)
 }
 
 func loginCallback(w http.ResponseWriter, r *http.Request) {
-	// TODO(garrett): Split into token separate token/JWKS retrieval methods, this is getting large
 	// TODO(garrett): Validate returned state against session management to ensure we sent it
-	queryParameters := url.Values{}
-	queryParameters.Add("grant_type", "authorization_code")
-	queryParameters.Add("code", r.FormValue("code"))
-
-	callbackUri := serverConfig.ApplicationUri.JoinPath("oidc", "callback")
-	queryParameters.Add("redirect_uri", callbackUri.String())
-
-	oidcTokenEndpoint := serverConfig.OidcDomain.JoinPath("oauth2", "v1", "token")
-	oidcTokenEndpoint.RawQuery = queryParameters.Encode()
-
-	tokenRequest, err := http.NewRequest(
-		"POST",
-		oidcTokenEndpoint.String(),
-		bytes.NewBuffer([]byte{}))
-
-	if err != nil {
-		http.Error(w, "Unable to create token request", http.StatusInternalServerError)
-		return
+	tokenSettings := oidc.TokenRequestSettings{
+		CallbackURI:   serverConfig.ApplicationURI.JoinPath("oidc", "callback"),
+		TokenEndpoint: serverConfig.OIDCDomain.JoinPath("oauth2", "v1", "token"),
+		AuthCode:      r.FormValue("code"),
+		ClientID:      serverConfig.OIDCClientID,
+		ClientSecret:  serverConfig.OIDCClientSecret,
 	}
 
-	tokenRequest.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	tokenRequest.SetBasicAuth(
-		url.QueryEscape(serverConfig.OidcClientId),
-		url.QueryEscape(serverConfig.OidcClientSecret))
+	resp, err := oidc.RequestToken(tokenSettings)
 
-	client := &http.Client{}
-	resp, err := client.Do(tokenRequest)
-
+	// TODO(garrett): Check request
 	if err != nil {
 		http.Error(w, "Unable to perform OIDC token request", http.StatusInternalServerError)
 		return
 	}
 
 	defer resp.Body.Close()
-
 	body, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
@@ -110,27 +86,16 @@ func loginCallback(w http.ResponseWriter, r *http.Request) {
 	// TODO(garrett): Remove, outputs sensitive data
 	log.Println(string(body))
 
-	jwksRequest, err := http.NewRequest(
-		"GET",
-		serverConfig.OidcDomain.JoinPath("oauth2", "v1", "keys").String(),
-		bytes.NewBuffer([]byte{}))
-
-	if err != nil {
-		http.Error(w, "Unable to create JWKS request", http.StatusInternalServerError)
-		return
-	}
-
-	jwksRequest.Header.Add("Accept", "application/json")
-	keyResponse, err := client.Do(jwksRequest)
+	// TODO(garrett): Split into token separate JWKS method
+	keyResp, err := oidc.RequestJWKS(serverConfig.OIDCDomain.JoinPath("oauth2", "v1", "keys"))
 
 	if err != nil {
 		http.Error(w, "Unable to perform JWKS retrieval", http.StatusInternalServerError)
 		return
 	}
 
-	defer keyResponse.Body.Close()
-
-	body, err = ioutil.ReadAll(keyResponse.Body)
+	defer keyResp.Body.Close()
+	body, err = ioutil.ReadAll(keyResp.Body)
 
 	if err != nil {
 		http.Error(w, "Failed to read JWKS response body", http.StatusInternalServerError)
@@ -178,7 +143,7 @@ func parseConfiguration() (ServerConfig, error) {
 		}
 	}
 
-	applicationUri, err := url.Parse(configMap["applicationUri"])
+	applicationURI, err := url.Parse(configMap["applicationURI"])
 
 	if err != nil {
 		return ServerConfig{}, fmt.Errorf("configuration: applicationUri is not a valid URI")
@@ -191,10 +156,10 @@ func parseConfiguration() (ServerConfig, error) {
 	}
 
 	parsedConfig := ServerConfig{
-		ApplicationUri:   applicationUri,
-		OidcClientId:     configMap["oidcClientId"],
-		OidcClientSecret: configMap["oidcClientSecret"],
-		OidcDomain:       oidcDomain,
+		ApplicationURI:   applicationURI,
+		OIDCClientID:     configMap["oidcClientID"],
+		OIDCClientSecret: configMap["oidcClientSecret"],
+		OIDCDomain:       oidcDomain,
 	}
 
 	return parsedConfig, nil
