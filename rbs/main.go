@@ -23,10 +23,10 @@ var requiredConfigs = []string{
 }
 
 type ServerConfig struct {
-	ApplicationUri *url.URL
-	OidcClientId string
+	ApplicationUri   *url.URL
+	OidcClientId     string
 	OidcClientSecret string // TODO(garrett): Investigate SGX or similar storage
-	OidcDomain *url.URL
+	OidcDomain       *url.URL
 }
 
 var serverConfig ServerConfig
@@ -178,7 +178,6 @@ func parseConfiguration() (ServerConfig, error) {
 		}
 	}
 
-
 	applicationUri, err := url.Parse(configMap["applicationUri"])
 
 	if err != nil {
@@ -192,10 +191,10 @@ func parseConfiguration() (ServerConfig, error) {
 	}
 
 	parsedConfig := ServerConfig{
-		ApplicationUri: applicationUri,
-		OidcClientId: configMap["oidcClientId"],
+		ApplicationUri:   applicationUri,
+		OidcClientId:     configMap["oidcClientId"],
 		OidcClientSecret: configMap["oidcClientSecret"],
-		OidcDomain: oidcDomain,
+		OidcDomain:       oidcDomain,
 	}
 
 	return parsedConfig, nil
