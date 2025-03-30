@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"flag"
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -16,6 +18,7 @@ import (
 var requiredConfigs = []string{
 	"applicationUri",
 	"oidcClientId",
+	"oidcClientSecret",
 	"oidcDomain",
 }
 
@@ -66,8 +69,68 @@ func login(w http.ResponseWriter, r *http.Request) {
 }
 
 func loginCallback(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Received authorization code from IdP!")
-	// TODO(garrett): Use authorization code to obtain token
+	// TODO(garrett): There's no need to parse this twice, config map -> struct
+	oidcTokenEndpoint, err := url.Parse(serverConfig["oidcDomain"])
+
+	if err != nil {
+		http.Error(w, "Invalid OIDC provider domain", http.StatusInternalServerError)
+		return
+	}
+
+	callbackUri, err := url.Parse(serverConfig["applicationUri"])
+
+	if err != nil {
+		http.Error(w, "Invalid application URI", http.StatusInternalServerError)
+		return
+	}
+
+	queryParameters := url.Values{}
+	queryParameters.Add("grant_type", "authorization_code")
+	queryParameters.Add("code", r.FormValue("code"))
+
+	callbackUri = callbackUri.JoinPath("oidc", "callback")
+	queryParameters.Add("redirect_uri", callbackUri.String())
+
+	oidcTokenEndpoint = oidcTokenEndpoint.JoinPath("oauth2", "v1", "token")
+	oidcTokenEndpoint.RawQuery = queryParameters.Encode()
+
+	tokenRequest, err := http.NewRequest(
+		"POST",
+		oidcTokenEndpoint.String(),
+		bytes.NewBuffer([]byte{}))
+
+	if err != nil {
+		http.Error(w, "Unable to create token request", http.StatusInternalServerError)
+		return
+	}
+
+	client := &http.Client{}
+
+	tokenRequest.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	tokenRequest.SetBasicAuth(
+		url.QueryEscape(serverConfig["oidcClientId"]),
+		url.QueryEscape(serverConfig["oidcClientSecret"]))
+
+	resp, err := client.Do(tokenRequest)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		http.Error(w, "Unable to read token response body", http.StatusInternalServerError)
+		return
+	}
+
+	// TODO(garrett): Handle error response from IdP, ala invalid Client Secret
+	// TODO(garrett): This is outputting a sensitive log, remove
+	log.Println(string(body))
+
 	// TODO(garrett): Use token to obtain userinfo
 	// TODO(garrett): Implement session tracking
 }
