@@ -1,3 +1,6 @@
+# Configuration
+.env
+
 # Output binary
 rbs
 rbs.exe
