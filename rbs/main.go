@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/garrett-s-wininger/skunk-works/rbs/oidc"
 	"html/template"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -45,6 +44,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
+	// TODO(garrett): Properly handle non-GET/HEAD calls
 	redirectSettings := oidc.RedirectSettings{
 		CallbackURI:  serverConfig.ApplicationURI.JoinPath("oidc", "callback"),
 		AuthEndpoint: serverConfig.OIDCDomain.JoinPath("oauth2", "v1", "authorize"),
@@ -57,7 +57,14 @@ func login(w http.ResponseWriter, r *http.Request) {
 }
 
 func loginCallback(w http.ResponseWriter, r *http.Request) {
-	// TODO(garrett): Validate returned state against session management to ensure we sent it
+	// TODO(garrett): Properly error on non-GET/HEAD calls
+	authorizationCode := r.FormValue("code")
+
+	if len(authorizationCode) == 0 {
+		http.Error(w, "Callback received without auth code", http.StatusBadRequest)
+		return
+	}
+
 	tokenSettings := oidc.TokenRequestSettings{
 		CallbackURI:   serverConfig.ApplicationURI.JoinPath("oidc", "callback"),
 		TokenEndpoint: serverConfig.OIDCDomain.JoinPath("oauth2", "v1", "token"),
@@ -66,46 +73,32 @@ func loginCallback(w http.ResponseWriter, r *http.Request) {
 		ClientSecret:  serverConfig.OIDCClientSecret,
 	}
 
-	resp, err := oidc.RequestToken(tokenSettings)
+	_, err := oidc.RequestToken(tokenSettings)
 
-	// TODO(garrett): Check request
 	if err != nil {
 		http.Error(w, "Unable to perform OIDC token request", http.StatusInternalServerError)
 		return
 	}
 
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-
-	if err != nil {
-		http.Error(w, "Unable to read token response body", http.StatusInternalServerError)
-		return
-	}
-
-	// TODO(garrett): Handle error response from IdP, ala invalid Client Secret
-	// TODO(garrett): Remove, outputs sensitive data
-	log.Println(string(body))
-
-	// TODO(garrett): Split into token separate JWKS method
-	keyResp, err := oidc.RequestJWKS(serverConfig.OIDCDomain.JoinPath("oauth2", "v1", "keys"))
+	keys, err := oidc.RequestJWKS(serverConfig.OIDCDomain.JoinPath("oauth2", "v1", "keys"))
 
 	if err != nil {
 		http.Error(w, "Unable to perform JWKS retrieval", http.StatusInternalServerError)
 		return
 	}
 
-	defer keyResp.Body.Close()
-	body, err = ioutil.ReadAll(keyResp.Body)
+	// TODO(garrett): Validate token data, decrypt from JWKS result
+	for _, key := range keys.Keys {
+		if key.Type == oidc.KeyTypeRSA &&
+			key.Algorithm == oidc.AlgorithmRS256 &&
+			key.Use == oidc.KeyUsageSigning {
 
-	if err != nil {
-		http.Error(w, "Failed to read JWKS response body", http.StatusInternalServerError)
-		return
+			log.Println(
+				fmt.Sprintf("Candidate Signing Key: %s (n) %s (e)", key.Modulus, key.Exponent))
+		}
 	}
 
-	// TODO(garrett) Validate token data, decrypt from JWKS result
 	// TODO(garrett): Remove, outputs sensitive data
-	log.Println(string(body))
-
 	// TODO(garrett): Implement session tracking
 }
 

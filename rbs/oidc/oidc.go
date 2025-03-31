@@ -2,9 +2,36 @@ package oidc
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 )
+
+const (
+	AlgorithmRS256 = "RS256"
+	KeyTypeRSA = "RSA"
+	KeyUsageSigning = "sig"
+)
+
+type AccessTokenResponse struct {
+	TokenType string `json:"token_type"`
+	ExpirySeconds int `json:"expires_in"`
+	AccessToken string `json:"access_token"`
+}
+
+type JWK struct {
+	Type string `json:"kty"`
+	Use string `json:"use",omitempty`
+	Algorithm string `json:"alg",omitempty`
+	Modulus string `json:"n",omitempty`
+	Exponent string `json:"e",omitempty`
+}
+
+type JWKS struct {
+	Keys []JWK `json:"keys"`
+}
 
 type RedirectSettings struct {
 	CallbackURI *url.URL
@@ -37,23 +64,45 @@ func Redirect(
 	http.Redirect(w, r, oidcAuthEndpoint.String(), http.StatusFound)
 }
 
-func RequestJWKS(endpoint *url.URL) (*http.Response, error) {
-	req, err := http.NewRequest(
-		"GET",
+func RequestJWKS(endpoint *url.URL) (JWKS, error) {
+	// We're already receiving a good URL, no point in validating
+	req, _ := http.NewRequest(
+		http.MethodGet,
 		endpoint.String(),
 		bytes.NewBuffer([]byte{}))
 
-	if err != nil {
-		return nil, err
-	}
-
 	req.Header.Add("Accept", "application/json")
 	client := &http.Client{}
+	resp, err := client.Do(req)
 
-	return client.Do(req)
+	if err != nil {
+		return JWKS{}, err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return JWKS{}, fmt.Errorf("Request for JWKS failed")
+	}
+
+	content, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		return JWKS{}, err
+	}
+
+	var keySet JWKS
+
+	err = json.Unmarshal(content, &keySet)
+
+	if err != nil {
+		return JWKS{}, err
+	}
+
+	return keySet, nil
 }
 
-func RequestToken(settings TokenRequestSettings) (*http.Response, error) {
+func RequestToken(settings TokenRequestSettings) (AccessTokenResponse, error) {
 	queryParameters := url.Values{}
 	queryParameters.Add("grant_type", "authorization_code")
 	queryParameters.Add("code", settings.AuthCode)
@@ -62,14 +111,11 @@ func RequestToken(settings TokenRequestSettings) (*http.Response, error) {
 	oidcTokenEndpoint := *settings.TokenEndpoint
 	oidcTokenEndpoint.RawQuery = queryParameters.Encode()
 
-	req, err := http.NewRequest(
-		"POST",
+	// We're already receiving a good URL, no point in validating
+	req, _ := http.NewRequest(
+		http.MethodPost,
 		oidcTokenEndpoint.String(),
 		bytes.NewBuffer([]byte{}))
-
-	if err != nil {
-		return nil, err
-	}
 
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(
@@ -77,5 +123,32 @@ func RequestToken(settings TokenRequestSettings) (*http.Response, error) {
 		url.QueryEscape(settings.ClientSecret))
 
 	client := &http.Client{}
-	return client.Do(req)
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return AccessTokenResponse{}, err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return AccessTokenResponse{}, fmt.Errorf("Request for OIDC access token failed")
+	}
+
+	content, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		return AccessTokenResponse{}, err
+	}
+
+	var accessTokenResponse AccessTokenResponse
+
+	err = json.Unmarshal(content, &accessTokenResponse)
+
+	if err != nil {
+		return AccessTokenResponse{}, err
+	}
+
+	// TODO(garrett): Validate access token, ID token
+	return accessTokenResponse, nil
 }
