@@ -2,11 +2,17 @@ package oidc
 
 import (
 	"bytes"
+	"crypto"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 const (
@@ -15,13 +21,21 @@ const (
 	KeyUsageSigning = "sig"
 )
 
+var JOSEBase64 = base64.URLEncoding.WithPadding(base64.NoPadding)
+
 type AccessTokenResponse struct {
 	TokenType string `json:"token_type"`
 	ExpirySeconds int `json:"expires_in"`
 	AccessToken string `json:"access_token"`
 }
 
+type JOSE struct {
+	ID string `json:"kid"`
+	Algorithm string `json:"alg"`
+}
+
 type JWK struct {
+	ID string `json:"kid"`
 	Type string `json:"kty"`
 	Use string `json:"use",omitempty`
 	Algorithm string `json:"alg",omitempty`
@@ -46,6 +60,99 @@ type TokenRequestSettings struct {
 	AuthCode string
 	ClientID string
 	ClientSecret string
+}
+
+func DecodeJOSEHeader(jwt string) (JOSE, int, error) {
+	headerEndIndex := strings.Index(jwt, ".")
+
+	if headerEndIndex == -1 {
+		return JOSE{}, 0, fmt.Errorf("oidc: input is not a valid JWT")
+	}
+
+	joseBase64 := jwt[0:headerEndIndex]
+	joseText, err := JOSEBase64.DecodeString(joseBase64)
+
+	if err != nil {
+		return JOSE{}, 0, err
+	}
+
+	var joseHeader JOSE
+	err = json.Unmarshal(joseText, &joseHeader)
+
+	if err != nil {
+		return JOSE{}, 0, err
+	}
+
+	return joseHeader, headerEndIndex - 1, nil
+}
+
+func DecodeSignedJWTPayload(jwtWithoutHeader string) ([]byte, int, []byte, error) {
+	jwtBase64, signatureBase64, found := strings.Cut(jwtWithoutHeader, ".")
+
+	if !found {
+		return nil, 0, nil, fmt.Errorf("oidc: input is not a valid JWT payload + signature")
+	}
+
+	jwtBytes, err := JOSEBase64.DecodeString(jwtBase64)
+
+	if err != nil {
+		return nil, 0, nil, err
+	}
+
+	signatureBytes, err := JOSEBase64.DecodeString(signatureBase64)
+
+	if err != nil {
+		return nil, 0, nil, err
+	}
+
+	return jwtBytes, len(jwtBase64), signatureBytes, nil
+}
+
+func DecodeJWT(jwt string, modulus string, exponent string) ([]byte, error) {
+	jose, headerSize, err := DecodeJOSEHeader(jwt)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if jose.Algorithm != AlgorithmRS256 {
+		return nil, fmt.Errorf("oidc: unsigned, encrypted, or unsupported algorithm detected in JOSE header")
+	}
+
+	jwtBytes, payloadSize, signature, err := DecodeSignedJWTPayload(jwt[headerSize+2:])
+
+	if err != nil {
+		return nil, err
+	}
+
+	modBytes, err := JOSEBase64.DecodeString(modulus)
+
+	if err != nil {
+		return nil, err
+	}
+
+	exponentBytes, err := JOSEBase64.DecodeString(exponent)
+
+	if err != nil {
+		return nil, err
+	}
+
+	publicKey := &rsa.PublicKey{
+		N: new(big.Int).SetBytes(modBytes),
+		E: int(new(big.Int).SetBytes(exponentBytes).Int64()),
+	}
+
+	signedContentLen := headerSize + payloadSize + 1
+	hash := sha256.New()
+	hash.Write([]byte(jwt[0:signedContentLen+1]))
+
+	err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash.Sum(nil), signature)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return jwtBytes, nil
 }
 
 func Redirect(

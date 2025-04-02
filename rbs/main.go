@@ -58,6 +58,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 
 func loginCallback(w http.ResponseWriter, r *http.Request) {
 	// TODO(garrett): Properly error on non-GET/HEAD calls
+	// TODO(garrett): Only allow if not already authenticated
 	authorizationCode := r.FormValue("code")
 
 	if len(authorizationCode) == 0 {
@@ -73,7 +74,7 @@ func loginCallback(w http.ResponseWriter, r *http.Request) {
 		ClientSecret:  serverConfig.OIDCClientSecret,
 	}
 
-	_, err := oidc.RequestToken(tokenSettings)
+	token, err := oidc.RequestToken(tokenSettings)
 
 	if err != nil {
 		http.Error(w, "Unable to perform OIDC token request", http.StatusInternalServerError)
@@ -87,19 +88,40 @@ func loginCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO(garrett): Validate token data, decrypt from JWKS result
+	successfulValidation := false
+
+	// TODO(garrett): Refactor so that when Key ID is present, we only attempt to validate
+	// a single signature
 	for _, key := range keys.Keys {
 		if key.Type == oidc.KeyTypeRSA &&
 			key.Algorithm == oidc.AlgorithmRS256 &&
 			key.Use == oidc.KeyUsageSigning {
 
-			log.Println(
-				fmt.Sprintf("Candidate Signing Key: %s (n) %s (e)", key.Modulus, key.Exponent))
+			data, err := oidc.DecodeJWT(token.AccessToken, key.Modulus, key.Exponent)
+
+			if err != nil {
+				continue
+			}
+
+			log.Println(fmt.Sprintf("Token: %s", data))
+			successfulValidation = true
+			break
 		}
 	}
 
-	// TODO(garrett): Remove, outputs sensitive data
+	// TODO(garrett): Perform additional validation IAC OIDC Core specification
+
+	if !successfulValidation {
+		// TODO(garrett): Investigate alternative return codes. This seems wrong unless
+		// we have bad validation logic. Otherwise, we've received a token we can't validate
+		// against the OP which means they're unauthorized, though that isn't the client's
+		// fault
+		http.Error(w, "Access token could not be verified", http.StatusInternalServerError)
+		return
+	}
+
 	// TODO(garrett): Implement session tracking
+	// TODO(garrett): Implement user creation/matching
 }
 
 func parseConfiguration() (ServerConfig, error) {
