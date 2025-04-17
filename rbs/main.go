@@ -81,6 +81,8 @@ func loginCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// NOTE(garrett): This presumes we actually have a JWKS, it's the case for Okta but not
+	// the only potential avenue according to the OIDC spec (ex. JWK specified, symmetric signing)
 	keys, err := oidc.RequestJWKS(serverConfig.OIDCDomain.JoinPath("oauth2", "v1", "keys"))
 
 	if err != nil {
@@ -88,14 +90,25 @@ func loginCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	endOfHeader := strings.Index(token.AccessToken, ".")
+	joseHeader, err := oidc.DecodeJOSEHeader(token.AccessToken[0:endOfHeader])
+
+	if err != nil {
+		http.Error(w, "Unable to parse JOSE header from OIDC token", http.StatusInternalServerError)
+		return
+	}
+
 	successfulValidation := false
 
-	// TODO(garrett): Refactor so that when Key ID is present, we only attempt to validate
-	// a single signature
+	// NOTE(garrett): We're hardcoding RS256 signing here but there are alternatives in the spec
 	for _, key := range keys.Keys {
 		if key.Type == oidc.KeyTypeRSA &&
 			key.Algorithm == oidc.AlgorithmRS256 &&
 			key.Use == oidc.KeyUsageSigning {
+
+			if joseHeader.ID != "" && key.ID != joseHeader.ID {
+				continue
+			}
 
 			data, err := oidc.DecodeJWT(token.AccessToken, key.Modulus, key.Exponent)
 
