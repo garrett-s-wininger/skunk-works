@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -30,7 +31,7 @@ type AccessTokenResponse struct {
 }
 
 type JOSE struct {
-	ID string `json:"kid"`
+	ID string `json:"kid",omitempty`
 	Algorithm string `json:"alg"`
 }
 
@@ -62,28 +63,21 @@ type TokenRequestSettings struct {
 	ClientSecret string
 }
 
-func DecodeJOSEHeader(jwt string) (JOSE, int, error) {
-	headerEndIndex := strings.Index(jwt, ".")
-
-	if headerEndIndex == -1 {
-		return JOSE{}, 0, fmt.Errorf("oidc: input is not a valid JWT")
-	}
-
-	joseBase64 := jwt[0:headerEndIndex]
-	joseText, err := JOSEBase64.DecodeString(joseBase64)
+func DecodeJOSEHeader(header string) (JOSE, error) {
+	joseText, err := JOSEBase64.DecodeString(header)
 
 	if err != nil {
-		return JOSE{}, 0, err
+		return JOSE{}, err
 	}
 
 	var joseHeader JOSE
 	err = json.Unmarshal(joseText, &joseHeader)
 
 	if err != nil {
-		return JOSE{}, 0, err
+		return JOSE{}, err
 	}
 
-	return joseHeader, headerEndIndex - 1, nil
+	return joseHeader, nil
 }
 
 func DecodeSignedJWTPayload(jwtWithoutHeader string) ([]byte, int, []byte, error) {
@@ -109,7 +103,8 @@ func DecodeSignedJWTPayload(jwtWithoutHeader string) ([]byte, int, []byte, error
 }
 
 func DecodeJWT(jwt string, modulus string, exponent string) ([]byte, error) {
-	jose, headerSize, err := DecodeJOSEHeader(jwt)
+	headerSize := strings.Index(jwt, ".")
+	jose, err := DecodeJOSEHeader(jwt[0:headerSize])
 
 	if err != nil {
 		return nil, err
@@ -119,7 +114,7 @@ func DecodeJWT(jwt string, modulus string, exponent string) ([]byte, error) {
 		return nil, fmt.Errorf("oidc: unsigned, encrypted, or unsupported algorithm detected in JOSE header")
 	}
 
-	jwtBytes, payloadSize, signature, err := DecodeSignedJWTPayload(jwt[headerSize+2:])
+	jwtBytes, payloadSize, signature, err := DecodeSignedJWTPayload(jwt[headerSize+1:])
 
 	if err != nil {
 		return nil, err
@@ -144,7 +139,7 @@ func DecodeJWT(jwt string, modulus string, exponent string) ([]byte, error) {
 
 	signedContentLen := headerSize + payloadSize + 1
 	hash := sha256.New()
-	hash.Write([]byte(jwt[0:signedContentLen+1]))
+	hash.Write([]byte(jwt[0:signedContentLen]))
 
 	err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash.Sum(nil), signature)
 
