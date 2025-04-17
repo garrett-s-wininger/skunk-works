@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -80,26 +79,26 @@ func DecodeJOSEHeader(header string) (JOSE, error) {
 	return joseHeader, nil
 }
 
-func DecodeSignedJWTPayload(jwtWithoutHeader string) ([]byte, int, []byte, error) {
+func DecodeSignedJWTPayload(jwtWithoutHeader string) ([]byte, []byte, error) {
 	jwtBase64, signatureBase64, found := strings.Cut(jwtWithoutHeader, ".")
 
 	if !found {
-		return nil, 0, nil, fmt.Errorf("oidc: input is not a valid JWT payload + signature")
+		return nil, nil, fmt.Errorf("oidc: input is not a valid JWT payload + signature")
 	}
 
 	jwtBytes, err := JOSEBase64.DecodeString(jwtBase64)
 
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, nil, err
 	}
 
 	signatureBytes, err := JOSEBase64.DecodeString(signatureBase64)
 
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, nil, err
 	}
 
-	return jwtBytes, len(jwtBase64), signatureBytes, nil
+	return jwtBytes, signatureBytes, nil
 }
 
 func DecodeJWT(jwt string, modulus string, exponent string) ([]byte, error) {
@@ -114,7 +113,7 @@ func DecodeJWT(jwt string, modulus string, exponent string) ([]byte, error) {
 		return nil, fmt.Errorf("oidc: unsigned, encrypted, or unsupported algorithm detected in JOSE header")
 	}
 
-	jwtBytes, payloadSize, signature, err := DecodeSignedJWTPayload(jwt[headerSize+1:])
+	jwtBytes, signature, err := DecodeSignedJWTPayload(jwt[headerSize+1:])
 
 	if err != nil {
 		return nil, err
@@ -137,7 +136,7 @@ func DecodeJWT(jwt string, modulus string, exponent string) ([]byte, error) {
 		E: int(new(big.Int).SetBytes(exponentBytes).Int64()),
 	}
 
-	signedContentLen := headerSize + payloadSize + 1
+	signedContentLen := strings.LastIndex(jwt, ".")
 	hash := sha256.New()
 	hash.Write([]byte(jwt[0:signedContentLen]))
 
