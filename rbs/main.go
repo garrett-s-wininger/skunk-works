@@ -206,7 +206,15 @@ func main() {
 	serverConfig = config
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/{$}", index)
+	mux.Handle(
+		"/{$}",
+		NewAllowedMethodMiddleware(
+			http.HandlerFunc(index),
+			http.MethodGet,
+			http.MethodHead,
+		),
+	)
+
 	mux.HandleFunc("/login", login)
 	mux.HandleFunc("/login/{$}", login)
 	mux.HandleFunc("/oidc/callback", loginCallback)
