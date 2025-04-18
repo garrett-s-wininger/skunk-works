@@ -44,7 +44,6 @@ func index(w http.ResponseWriter, r *http.Request) {
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
-	// TODO(garrett): Properly handle non-GET/HEAD calls
 	redirectSettings := oidc.RedirectSettings{
 		CallbackURI:  serverConfig.ApplicationURI.JoinPath("oidc", "callback"),
 		AuthEndpoint: serverConfig.OIDCDomain.JoinPath("oauth2", "v1", "authorize"),
@@ -57,7 +56,6 @@ func login(w http.ResponseWriter, r *http.Request) {
 }
 
 func loginCallback(w http.ResponseWriter, r *http.Request) {
-	// TODO(garrett): Properly error on non-GET/HEAD calls
 	// TODO(garrett): Only allow if not already authenticated
 	authorizationCode := r.FormValue("code")
 
@@ -122,7 +120,7 @@ func loginCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// TODO(garrett): Perform additional validation IAC OIDC Core specification
+	// TODO(garrett): Perform additional validation IAW OIDC Core specification
 
 	if !successfulValidation {
 		// TODO(garrett): Investigate alternative return codes. This seems wrong unless
@@ -135,6 +133,7 @@ func loginCallback(w http.ResponseWriter, r *http.Request) {
 
 	// TODO(garrett): Implement session tracking
 	// TODO(garrett): Implement user creation/matching
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 func parseConfiguration() (ServerConfig, error) {
@@ -205,20 +204,37 @@ func main() {
 
 	serverConfig = config
 	mux := http.NewServeMux()
+	allowGetAndHead := NewAllowedMethods(http.MethodGet, http.MethodHead)
 
-	mux.Handle(
-		"/{$}",
-		NewAllowedMethodMiddleware(
-			http.HandlerFunc(index),
-			http.MethodGet,
-			http.MethodHead,
-		),
-	)
+	indexChain := &MiddlewareChain{
+		[]Middleware{
+			allowGetAndHead,
+			&TerminalHandler{http.HandlerFunc(index)},
+		},
+	}
 
-	mux.HandleFunc("/login", login)
-	mux.HandleFunc("/login/{$}", login)
-	mux.HandleFunc("/oidc/callback", loginCallback)
-	mux.HandleFunc("/oidc/callback/{$}", loginCallback)
+	mux.Handle("/{$}", indexChain)
+
+	loginChain := &MiddlewareChain{
+		[]Middleware{
+			allowGetAndHead,
+			&TerminalHandler{http.HandlerFunc(login)},
+		},
+	}
+
+	mux.Handle("/login", loginChain)
+	mux.Handle("/login/{$}", loginChain)
+
+	oidcCallbackChain := &MiddlewareChain{
+		[]Middleware{
+			allowGetAndHead,
+			&TerminalHandler{http.HandlerFunc(loginCallback)},
+		},
+	}
+
+	mux.Handle("/oidc/callback", oidcCallbackChain)
+	mux.Handle("/oidc/callback/{$}", oidcCallbackChain)
+
 	mux.Handle(
 		"/static/",
 		http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
