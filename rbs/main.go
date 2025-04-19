@@ -89,6 +89,12 @@ func loginCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	endOfHeader := strings.Index(token.AccessToken, ".")
+
+	if endOfHeader == -1 {
+		http.Error(w, "Received token cannot possibly be valid", http.StatusInternalServerError)
+		return
+	}
+
 	joseHeader, err := oidc.DecodeJOSEHeader(token.AccessToken[0:endOfHeader])
 
 	if err != nil {
@@ -96,31 +102,47 @@ func loginCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	successfulValidation := false
-
-	// NOTE(garrett): We're hardcoding RS256 signing here but there are alternatives in the spec
-	for _, key := range keys.Keys {
-		if key.Type == oidc.KeyTypeRSA &&
-			key.Algorithm == oidc.AlgorithmRS256 &&
-			key.Use == oidc.KeyUsageSigning {
-
-			if joseHeader.ID != "" && key.ID != joseHeader.ID {
-				continue
-			}
-
-			data, err := oidc.DecodeJWT(token.AccessToken, key.Modulus, key.Exponent)
-
-			if err != nil {
-				continue
-			}
-
-			log.Println(fmt.Sprintf("Token: %s", data))
-			successfulValidation = true
-			break
-		}
+	if joseHeader.Type != oidc.JOSETypeOktaAccessToken {
+		http.Error(w, "Decoded JOSE header indicates payload is not a JWT", http.StatusInternalServerError)
+		return
 	}
 
-	// TODO(garrett): Perform additional validation IAW OIDC Core specification
+	successfulValidation := false
+
+	for _, key := range keys.Keys {
+		// NOTE(garrett): We're hardcoding RS256 here but there are more in the spec, this one is required
+		if key.Type != oidc.KeyTypeRSA {
+			continue
+		}
+
+		if key.Algorithm != "" && key.Algorithm != oidc.AlgorithmRS256 {
+			continue
+		}
+
+		if key.Use != "" && key.Use != oidc.KeyUsageSigning {
+			continue
+		}
+
+		if joseHeader.ID != "" && key.ID != "" && key.ID != joseHeader.ID {
+			continue
+		}
+
+		data, err := oidc.DecodeJWT(token.AccessToken, key.Modulus, key.Exponent)
+
+		if err != nil {
+			continue
+		}
+
+		successfulValidation = oidc.ValidateJWT(
+			data,
+			oidc.JWTClaimExpectations{
+				Issuer: serverConfig.OIDCDomain.String(),
+				Audience: serverConfig.OIDCDomain.String(),
+			},
+		)
+
+		break
+	}
 
 	if !successfulValidation {
 		// TODO(garrett): Investigate alternative return codes. This seems wrong unless

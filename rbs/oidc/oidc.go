@@ -13,10 +13,14 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const (
 	AlgorithmRS256 = "RS256"
+	// NOTE(garrett): Apparently Okta uses a specifically defined type here,
+	// should be on the lookout for others, as OIDC doesn't appear to standardize
+	JOSETypeOktaAccessToken = "application/okta-internal-at+jwt"
 	KeyTypeRSA = "RSA"
 	KeyUsageSigning = "sig"
 )
@@ -30,13 +34,15 @@ type AccessTokenResponse struct {
 }
 
 type JOSE struct {
-	ID string `json:"kid",omitempty`
 	Algorithm string `json:"alg"`
+	Type string `json:"typ"`
+	ID string `json:"kid",omitempty`
+	Encryption string `json:"enc",omitempty`
 }
 
 type JWK struct {
-	ID string `json:"kid"`
 	Type string `json:"kty"`
+	ID string `json:"kid",omitempty`
 	Use string `json:"use",omitempty`
 	Algorithm string `json:"alg",omitempty`
 	Modulus string `json:"n",omitempty`
@@ -45,6 +51,20 @@ type JWK struct {
 
 type JWKS struct {
 	Keys []JWK `json:"keys"`
+}
+
+type JWT struct {
+	ID string `json:"jti",omitempty`
+	Issuer string `json:"iss",omitempty`
+	IssuedAt int64 `json:"iat",omitempty`
+	Subject string `json:"sub",omitempty`
+	Audience string `json:"aud",omitempty`
+	Expiration int64 `json:"exp",omitempty`
+}
+
+type JWTClaimExpectations struct {
+	Issuer string
+	Audience string
 }
 
 type RedirectSettings struct {
@@ -101,34 +121,34 @@ func DecodeSignedJWTPayload(jwtWithoutHeader string) ([]byte, []byte, error) {
 	return jwtBytes, signatureBytes, nil
 }
 
-func DecodeJWT(jwt string, modulus string, exponent string) ([]byte, error) {
+func DecodeJWT(jwt string, modulus string, exponent string) (JWT, error) {
 	headerSize := strings.Index(jwt, ".")
 	jose, err := DecodeJOSEHeader(jwt[0:headerSize])
 
 	if err != nil {
-		return nil, err
+		return JWT{}, err
 	}
 
 	if jose.Algorithm != AlgorithmRS256 {
-		return nil, fmt.Errorf("oidc: unsigned, encrypted, or unsupported algorithm detected in JOSE header")
+		return JWT{}, fmt.Errorf("oidc: unsigned, encrypted, or unsupported algorithm detected in JOSE header")
 	}
 
 	jwtBytes, signature, err := DecodeSignedJWTPayload(jwt[headerSize+1:])
 
 	if err != nil {
-		return nil, err
+		return JWT{}, err
 	}
 
 	modBytes, err := JOSEBase64.DecodeString(modulus)
 
 	if err != nil {
-		return nil, err
+		return JWT{}, err
 	}
 
 	exponentBytes, err := JOSEBase64.DecodeString(exponent)
 
 	if err != nil {
-		return nil, err
+		return JWT{}, err
 	}
 
 	publicKey := &rsa.PublicKey{
@@ -143,10 +163,17 @@ func DecodeJWT(jwt string, modulus string, exponent string) ([]byte, error) {
 	err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash.Sum(nil), signature)
 
 	if err != nil {
-		return nil, err
+		return JWT{}, err
 	}
 
-	return jwtBytes, nil
+	var jwtStruct JWT
+	err = json.Unmarshal(jwtBytes, &jwtStruct)
+
+	if err != nil {
+		return JWT{}, nil
+	}
+
+	return jwtStruct, nil
 }
 
 func Redirect(
@@ -166,7 +193,7 @@ func Redirect(
 }
 
 func RequestJWKS(endpoint *url.URL) (JWKS, error) {
-	// We're already receiving a good URL, no point in validating
+	// NOTE(garrett): We're already receiving a good URL, no point in validating
 	req, _ := http.NewRequest(
 		http.MethodGet,
 		endpoint.String(),
@@ -212,7 +239,7 @@ func RequestToken(settings TokenRequestSettings) (AccessTokenResponse, error) {
 	oidcTokenEndpoint := *settings.TokenEndpoint
 	oidcTokenEndpoint.RawQuery = queryParameters.Encode()
 
-	// We're already receiving a good URL, no point in validating
+	// NOTE(garrett): We're already receiving a good URL, no point in validating
 	req, _ := http.NewRequest(
 		http.MethodPost,
 		oidcTokenEndpoint.String(),
@@ -250,6 +277,50 @@ func RequestToken(settings TokenRequestSettings) (AccessTokenResponse, error) {
 		return AccessTokenResponse{}, err
 	}
 
-	// TODO(garrett): Validate access token, ID token
 	return accessTokenResponse, nil
+}
+
+func ValidateJWT(jwt JWT, expectations JWTClaimExpectations) bool {
+	if jwt.Issuer == "" || jwt.Issuer != expectations.Issuer {
+		return false
+	}
+
+	if jwt.Audience == "" || jwt.Audience != expectations.Audience {
+		return false
+	}
+
+	// NOTE(garrett): We're not currently handling extensions, otherwise would need to validate "azp"
+	// NOTE(garrett): We're allowed to use TLS server validation instead of the signing validation
+	// but opt not to
+
+	// NOTE(garrett): We already hardcode RS256 support, could later expand to suppor registration value
+
+	if jwt.Expiration == 0 {
+		return false
+	}
+
+	now := time.Now()
+
+	if now.After(time.Unix(jwt.Expiration, 0)) {
+		return false
+	}
+
+	// TODO(garrett): Validate issued at time isn't too far behind, our choice on time period
+	if jwt.IssuedAt == 0 {
+		return false
+	}
+
+	difference := now.Sub(time.Unix(jwt.IssuedAt, 0))
+
+	// NOTE(garrett): We're hardcoding 5 minutes, the default max for Kerberos. Perhaps we
+	// should make this configurable in the future.
+	if difference.Minutes() >= 5 {
+		return false
+	}
+
+	// NOTE(garrett): We don't send a nonce but if we did, need to validate it here
+	// NOTE(garrett): We don't request "acr" claims but if we did, we would need to assert the value
+	// NOTE(garrett): We don't request "auth_time" but we did, should check time since last auth
+
+	return true
 }
