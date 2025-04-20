@@ -76,4 +76,3 @@ func parseConfiguration() (ServerConfig, error) {
 
 	return parsedConfig, nil
 }
-

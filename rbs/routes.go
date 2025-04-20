@@ -10,6 +10,46 @@ import (
 	"strings"
 )
 
+func getApplicationRoutes() *http.ServeMux {
+	mux := http.NewServeMux()
+	allowGetAndHead := NewAllowedMethods(http.MethodGet, http.MethodHead)
+
+	indexChain := &MiddlewareChain{
+		[]Middleware{
+			allowGetAndHead,
+			&TerminalHandler{http.HandlerFunc(index)},
+		},
+	}
+
+	mux.Handle("/{$}", indexChain)
+
+	loginChain := &MiddlewareChain{
+		[]Middleware{
+			allowGetAndHead,
+			&TerminalHandler{http.HandlerFunc(login)},
+		},
+	}
+
+	mux.Handle("/login", loginChain)
+	mux.Handle("/login/{$}", loginChain)
+
+	oidcCallbackChain := &MiddlewareChain{
+		[]Middleware{
+			allowGetAndHead,
+			&TerminalHandler{http.HandlerFunc(loginCallback)},
+		},
+	}
+
+	mux.Handle("/oidc/callback", oidcCallbackChain)
+	mux.Handle("/oidc/callback/{$}", oidcCallbackChain)
+
+	mux.Handle(
+		"/static/",
+		http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+
+	return mux
+}
+
 func index(w http.ResponseWriter, r *http.Request) {
 	paths := []string{
 		filepath.Join("templates/index.tmpl"),
@@ -116,7 +156,7 @@ func loginCallback(w http.ResponseWriter, r *http.Request) {
 		successfulValidation = oidc.ValidateJWT(
 			data,
 			oidc.JWTClaimExpectations{
-				Issuer: serverConfig.OIDCDomain.String(),
+				Issuer:   serverConfig.OIDCDomain.String(),
 				Audience: serverConfig.OIDCDomain.String(),
 			},
 		)
@@ -137,4 +177,3 @@ func loginCallback(w http.ResponseWriter, r *http.Request) {
 	// TODO(garrett): Implement user creation/matching
 	http.Redirect(w, r, "/", http.StatusFound)
 }
-

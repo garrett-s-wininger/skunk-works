@@ -1,13 +1,57 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"sync/atomic"
+	"time"
 )
 
+var keyingMaterial atomic.Value
 var serverConfig ServerConfig
+
+func periodicCryptoMaterialRefresh(cert, key string, interval time.Duration) {
+	certMTime := time.Now()
+	keyMTime := time.Now()
+	ticker := time.NewTicker(interval)
+
+	for range ticker.C {
+		certFileInfo, err := os.Stat(cert)
+
+		if err != nil {
+			log.Println("WARN: Failed to stat certificate chain for refresh")
+			continue
+		}
+
+		keyFileInfo, err := os.Stat(key)
+
+		if err != nil {
+			log.Println("WARN: Failed to stat certificate key for refresh")
+			continue
+		}
+
+		newCertMTime := certFileInfo.ModTime()
+		newKeyMTime := keyFileInfo.ModTime()
+
+		if newCertMTime.After(certMTime) && newKeyMTime.After(keyMTime) {
+			keyPair, err := tls.LoadX509KeyPair(cert, key)
+
+			if err != nil {
+				log.Println("WARN: Failed to update key pair with new crypto material")
+				continue
+			}
+
+			certMTime = newCertMTime
+			keyMTime = newKeyMTime
+			keyingMaterial.Store(&keyPair)
+			log.Println("INFO: Performed keying material refresh for TLS connections")
+		}
+	}
+}
 
 func main() {
 	port := flag.Int("p", 8080, "Requested port number to listen on")
@@ -22,54 +66,40 @@ func main() {
 	}
 
 	serverConfig = config
-	mux := http.NewServeMux()
-	allowGetAndHead := NewAllowedMethods(http.MethodGet, http.MethodHead)
-
-	indexChain := &MiddlewareChain{
-		[]Middleware{
-			allowGetAndHead,
-			&TerminalHandler{http.HandlerFunc(index)},
-		},
-	}
-
-	mux.Handle("/{$}", indexChain)
-
-	loginChain := &MiddlewareChain{
-		[]Middleware{
-			allowGetAndHead,
-			&TerminalHandler{http.HandlerFunc(login)},
-		},
-	}
-
-	mux.Handle("/login", loginChain)
-	mux.Handle("/login/{$}", loginChain)
-
-	oidcCallbackChain := &MiddlewareChain{
-		[]Middleware{
-			allowGetAndHead,
-			&TerminalHandler{http.HandlerFunc(loginCallback)},
-		},
-	}
-
-	mux.Handle("/oidc/callback", oidcCallbackChain)
-	mux.Handle("/oidc/callback/{$}", oidcCallbackChain)
-
-	mux.Handle(
-		"/static/",
-		http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
-
+	mux := getApplicationRoutes()
 	listenAddress := fmt.Sprintf("0.0.0.0:%d", *port)
 
 	if (*cert == "" && *key != "") || (*cert != "" && *key == "") {
-		log.Fatal("Detected HTTP2/TLS settings, both certificate (c) and key (k) must be provided")
+		log.Fatal("Detected partial HTTP2/TLS settings, both certificate (c) and key (k) must be provided")
 	}
 
-	// TODO(garrett): Check on the possibility of automatically reloading the TLS context to prevent
-	// necessity for application restart (FSEvents/inotify/FileWatch)
-
-	if (*cert == "" && *key == "") {
+	if *cert == "" && *key == "" {
 		log.Fatal(http.ListenAndServe(listenAddress, mux))
 	} else {
-		log.Fatal(http.ListenAndServeTLS(listenAddress, *cert, *key, mux))
+		keyPair, err := tls.LoadX509KeyPair(*cert, *key)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		keyingMaterial.Store(&keyPair)
+
+		tlsConfig := &tls.Config{
+			GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+				return keyingMaterial.Load().(*tls.Certificate), nil
+			},
+		}
+
+		server := &http.Server{
+			Addr:      listenAddress,
+			TLSConfig: tlsConfig,
+			Handler:   mux,
+		}
+
+		// TODO(garrett): Most OSes have methods to get notified on file updates,
+		// we should use those instead of polling as there's no need to continously
+		// stat the filesystem unless those facilities are unavilable.
+		go periodicCryptoMaterialRefresh(*cert, *key, time.Minute)
+		log.Fatal(server.ListenAndServeTLS("", ""))
 	}
 }
