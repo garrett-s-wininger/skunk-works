@@ -2,23 +2,46 @@ package main
 
 import (
 	"fmt"
+	"github.com/garrett-s-wininger/skunk-works/rbs/oidc"
 	"net/url"
 	"os"
 	"strings"
 )
 
-var requiredConfigs = []string{
+const (
+	AuthProviderAnonymous = "anonymous"
+	AuthProviderField     = "authProvider"
+	AuthProviderOIDC      = "oidc"
+	SessionProviderField  = "sessionProvider"
+	SessionProviderMemory = "memory"
+)
+
+var requiredOIDCOptions = []string{
 	"applicationURI",
 	"oidcClientID",
 	"oidcClientSecret",
 	"oidcDomain",
 }
 
+var requiredGlobals = []string{
+	AuthProviderField,
+	SessionProviderField,
+}
+
 type ServerConfig struct {
-	ApplicationURI   *url.URL
-	OIDCClientID     string
-	OIDCClientSecret string // TODO(garrett): Investigate SGX or similar storage
-	OIDCDomain       *url.URL
+	auth AuthConfig
+}
+
+func enforceKeyPresence(parsedKeys map[string]string, requiredKeys []string) error {
+	for _, key := range requiredKeys {
+		_, ok := parsedKeys[key]
+
+		if !ok {
+			return fmt.Errorf("configuration: required config %s is missing from .env", key)
+		}
+	}
+
+	return nil
 }
 
 func parseConfiguration() (ServerConfig, error) {
@@ -47,32 +70,59 @@ func parseConfiguration() (ServerConfig, error) {
 		configMap[keyValuePair[0]] = keyValuePair[1]
 	}
 
-	for _, key := range requiredConfigs {
-		_, ok := configMap[key]
+	err = enforceKeyPresence(configMap, requiredGlobals)
 
-		if !ok {
-			return ServerConfig{}, fmt.Errorf("configuration: required config %s is missing from .env", key)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+
+	if configMap[SessionProviderField] != SessionProviderMemory {
+		return ServerConfig{}, fmt.Errorf("Unsupported session provider requested: %s", configMap[SessionProviderField])
+	}
+
+	sessionProvider := &InMemorySessionManager{
+		sessions: make(map[string]*Session),
+	}
+
+	var authNProvider AuthNProvider
+
+	if configMap[AuthProviderField] == AuthProviderAnonymous {
+		authNProvider = &AnonymousAuthN{sessionProvider}
+	} else if configMap[AuthProviderField] == AuthProviderOIDC {
+		err = enforceKeyPresence(configMap, requiredOIDCOptions)
+
+		if err != nil {
+			return ServerConfig{}, err
 		}
+
+		applicationURI, err := url.Parse(configMap["applicationURI"])
+
+		if err != nil {
+			return ServerConfig{}, fmt.Errorf("configuration: applicationUri is not a valid URI")
+		}
+
+		oidcDomain, err := url.Parse(configMap["oidcDomain"])
+
+		if err != nil {
+			return ServerConfig{}, fmt.Errorf("configuration: oidcDomain is not a valid URI")
+		}
+
+		oidcConfig := oidc.Configuration{
+			ApplicationURI:   applicationURI,
+			OIDCClientID:     configMap["oidcClientID"],
+			OIDCClientSecret: configMap["oidcClientSecret"],
+			OIDCDomain:       oidcDomain,
+		}
+
+		authNProvider = &OIDCAuthN{oidcConfig, sessionProvider}
+	} else {
+		return ServerConfig{}, fmt.Errorf("Unsupported authentication provider requested: %s", configMap[AuthProviderField])
 	}
 
-	applicationURI, err := url.Parse(configMap["applicationURI"])
-
-	if err != nil {
-		return ServerConfig{}, fmt.Errorf("configuration: applicationUri is not a valid URI")
+	authConfig := AuthConfig{
+		AuthN:   authNProvider,
+		Session: sessionProvider,
 	}
 
-	oidcDomain, err := url.Parse(configMap["oidcDomain"])
-
-	if err != nil {
-		return ServerConfig{}, fmt.Errorf("configuration: oidcDomain is not a valid URI")
-	}
-
-	parsedConfig := ServerConfig{
-		ApplicationURI:   applicationURI,
-		OIDCClientID:     configMap["oidcClientID"],
-		OIDCClientSecret: configMap["oidcClientSecret"],
-		OIDCDomain:       oidcDomain,
-	}
-
-	return parsedConfig, nil
+	return ServerConfig{authConfig}, nil
 }

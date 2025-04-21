@@ -1,61 +1,69 @@
 package main
 
 import (
+	"fmt"
+	"log"
 	"net/http"
 )
 
 type Middleware interface {
 	http.Handler
-	ShouldContinue() bool
+	SetNext(handler http.Handler)
 }
 
 type MiddlewareChain struct {
-	handlers []Middleware
+	h http.Handler
 }
 
 func (m *MiddlewareChain) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	for _, handler := range m.handlers {
-		handler.ServeHTTP(w, r)
-
-		if !handler.ShouldContinue() {
-			break
-		}
-	}
+	m.h.ServeHTTP(w, r)
 }
 
-type TerminalHandler struct {
+// NOTE(garrett): Perhaps receive the final handler first, it reads better this way but not sure...
+func NewMiddlewareChain(rootHandler Middleware, supplementalHandlers ...Middleware) *MiddlewareChain {
+	handlerCount := len(supplementalHandlers)
+
+	if handlerCount > 0 {
+		rootHandler.SetNext(supplementalHandlers[0])
+	}
+
+	for idx, handler := range supplementalHandlers {
+		if idx == handlerCount-1 {
+			break
+		}
+
+		handler.SetNext(supplementalHandlers[idx+1])
+	}
+
+	return &MiddlewareChain{rootHandler}
+}
+
+type PassThrough struct {
 	handler http.Handler
 }
 
-func (m *TerminalHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (m *PassThrough) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.handler.ServeHTTP(w, r)
 }
 
-func (*TerminalHandler) ShouldContinue() bool {
-	return false
+func (*PassThrough) SetNext(http.Handler) {
+	log.Fatal("SetNext called on PassThrough, this struct does not support this method")
 }
 
-type AllowedMethods struct {
-	errored bool
+type AllowedMethodFilter struct {
 	methods []string
+	next    http.Handler
 }
 
-func NewAllowedMethods(method string, methods ...string) *AllowedMethods {
-	// TODO(garrett): Validate that we're actually using HTTP methods and not random strings
-	allowedMethods := make([]string, len(methods)+1)
-	allowedMethods[0] = method
-
-	for idx, additionalMethod := range methods {
-		allowedMethods[idx+1] = additionalMethod
-	}
-
-	return &AllowedMethods{
-		errored: false,
-		methods: allowedMethods,
-	}
+func NewAllowedMethodFilter(methods []string) *AllowedMethodFilter {
+	return &AllowedMethodFilter{methods, nil}
 }
 
-func (m *AllowedMethods) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (m *AllowedMethodFilter) SetNext(h http.Handler) {
+	m.next = h
+}
+
+func (m *AllowedMethodFilter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	allowed := false
 
 	for _, method := range m.methods {
@@ -67,10 +75,65 @@ func (m *AllowedMethods) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if !allowed {
 		http.Error(w, "Invalid HTTP method presented to endpoint", http.StatusMethodNotAllowed)
-		m.errored = true
+	}
+
+	if m.next != nil {
+		m.next.ServeHTTP(w, r)
 	}
 }
 
-func (m *AllowedMethods) ShouldContinue() bool {
-	return !m.errored
+type AuthenticationFilter struct {
+	config AuthConfig
+	next   http.Handler
+}
+
+func NewAuthenticationFilter(config AuthConfig) *AuthenticationFilter {
+	return &AuthenticationFilter{config, nil}
+}
+
+func (m *AuthenticationFilter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	sessionCookie, err := r.Cookie("id")
+	var sessionID string
+
+	// TODO(garrett): Evaluate separate middleware for enforcing client tracking instead of
+	// having it directly in the authentication logic
+	// TODO(garrett): Include expiry as a check here
+	if err == http.ErrNoCookie || !m.config.Session.Exists(sessionCookie.Value) {
+		// TODO(garrett): Inlcude non-sensitive request info
+		// TODO(garrett): Migrate to logging subsystem
+		log.Println("Initiated anonymous session creation")
+		sessionID, err = m.config.Session.Create()
+
+		if err != nil {
+			http.Error(w, "Unable to create new anonymous session", http.StatusInternalServerError)
+			return
+		}
+
+		// TODO(garrett): Evaluate additional session cookie flags
+		// NOTE(garrett): Likely should force secure but this makes local dev difficult.
+		// We should explore options here, possibly setting secure only if we're listening
+		// with TLS
+		w.Header().Set("Set-Cookie", fmt.Sprintf("id=%s; HttpOnly; Path=/", sessionID))
+	} else {
+		sessionID = sessionCookie.Value
+	}
+
+	authenticated, err := m.config.Session.Authenticated(sessionID)
+
+	if err != nil {
+		http.Error(w, "Failed to check session authentication status", http.StatusInternalServerError)
+		return
+	}
+
+	if !authenticated {
+		m.config.AuthN.Authenticate(w, r, m.next)
+	} else {
+		if m.next != nil {
+			m.next.ServeHTTP(w, r)
+		}
+	}
+}
+
+func (m *AuthenticationFilter) SetNext(h http.Handler) {
+	m.next = h
 }

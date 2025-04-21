@@ -12,7 +12,6 @@ import (
 )
 
 var keyingMaterial atomic.Value
-var serverConfig ServerConfig
 
 func periodicCryptoMaterialRefresh(cert, key string, interval time.Duration) {
 	certMTime := time.Now()
@@ -65,8 +64,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	serverConfig = config
-	mux := getApplicationRoutes()
+	mux := getApplicationRoutes(config.auth)
 	listenAddress := fmt.Sprintf("0.0.0.0:%d", *port)
 
 	if (*cert == "" && *key != "") || (*cert != "" && *key == "") {

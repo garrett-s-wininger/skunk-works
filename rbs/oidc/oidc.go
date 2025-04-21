@@ -33,6 +33,13 @@ type AccessTokenResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
+type Configuration struct {
+	ApplicationURI   *url.URL
+	OIDCClientID     string
+	OIDCClientSecret string // TODO(garrett): Investigate SGX or similar storage
+	OIDCDomain       *url.URL
+}
+
 type JOSE struct {
 	Algorithm string `json:"alg"`
 	Type string `json:"typ"`
