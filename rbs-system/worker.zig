@@ -106,17 +106,11 @@ pub fn main() !void {
         .output = "Starting pipeline...",
     };
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-
-    // TODO(garrett): We've currently got the command node in a state
-    // where we have to manage the arena outside of the struct. It seems
-    // we should instead pass the parent allocator and then create the
-    // arena internally on a per-subprocess basis. Otherwise, all objects
-    // of this type would be sharing an arena and we'd hang onto it
-    // much longer than necessary.
     const argv: [2][]const u8 = .{ "echo", "hello world" };
-    var dag2 = CommandNode.init(arena.allocator(), &argv);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+
+    var dag2 = CommandNode.init(gpa.allocator(), &argv);
 
     var dag3: EchoNode = .{
         .output = "End of pipeline.",
