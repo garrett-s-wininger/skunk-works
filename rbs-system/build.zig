@@ -8,4 +8,12 @@ pub fn build(b: *std.Build) void {
     });
 
     b.installArtifact(worker);
+
+    const queue = b.addExecutable(.{
+        .name = "rbs-queue",
+        .root_source_file = b.path("queue.zig"),
+        .target = b.graph.host,
+    });
+
+    b.installArtifact(queue);
 }

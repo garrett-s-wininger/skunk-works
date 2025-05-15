@@ -1,29 +1,46 @@
 const std = @import("std");
-const exec = @import("exec.zig");
+
+const c = @cImport({
+    @cInclude("stdio.h");
+    @cInclude("sys/socket.h");
+    @cInclude("sys/un.h");
+    @cInclude("unistd.h");
+});
 
 pub fn main() !void {
-    var dag1: exec.Echo = .{
-        .output = "Starting pipeline...",
-    };
+    // NOTE(garrett): Basic socket creation
+    const connection_socket = c.socket(c.AF_UNIX, c.SOCK_DGRAM, 0);
 
-    const argv: [2][]const u8 = .{ "echo", "hello world" };
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+    if (connection_socket == -1) {
+        c.perror("socket");
+        return error.SocketCreationFailure;
+    }
 
-    var dag2 = exec.Command.init(gpa.allocator(), &argv);
+    defer _ = c.close(connection_socket);
 
-    var dag3: exec.Echo = .{
-        .output = "End of pipeline.",
-    };
+    // NOTE(garrett): Address definition
+    var socket_address: c.sockaddr_un = .{};
 
-    const children = [_]*const exec.Node{
-        &dag1.executionNode(),
-        &dag2.executionNode(),
-        &dag3.executionNode(),
-    };
+    socket_address.sun_family = c.AF_UNIX;
+    const socket_fs_path = "/tmp/rbs.sock";
+    @memcpy(socket_address.sun_path[0..socket_fs_path.len], socket_fs_path);
 
-    var dag = exec.SequentialContainer(3).init();
+    // NOTE(garrett): Connection
+    const connection_result = c.connect(connection_socket, @ptrCast(&socket_address), @sizeOf(c.sockaddr_un));
 
-    dag.children = children;
-    _ = dag.executionNode().execute();
+    if (connection_result == -1) {
+        c.perror("connect");
+        return error.ConnectionFailure;
+    }
+
+    // NOTE(garrett): Message pass
+    const message: [1024]u8 = undefined;
+
+    // TODO(garrett): Use sendmsg for more control
+    const send_result = c.send(connection_socket, @ptrCast(message[0..]), message.len, 0);
+
+    if (send_result == -1) {
+        c.perror("send");
+        return error.SendFailure;
+    }
 }
