@@ -1,3 +1,6 @@
+//! A worker implementation for RBS that periodically reaches out to a queuing endpoint in
+//! order to obtain any available work.
+
 const std = @import("std");
 
 const c = @cImport({

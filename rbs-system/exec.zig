@@ -1,8 +1,17 @@
+//! DAG node implementations that form the core of RBS' execution model.
+
 const std = @import("std");
 
+/// Execution results can currently be success or failure which we use to gate logic
+/// in the execution pipeline or provide notice back to the user.
 const Result = enum { success, failure };
+
+/// Nodes must provide a given VTable so they can be executed through the same API
+/// in order to simplify handling across mixed types.
 const VTable = struct { execute: *const fn (*anyopaque) Result };
 
+/// The basic execution node, contains everything we expect each implementation to
+/// provide.
 pub const Node = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
@@ -12,6 +21,8 @@ pub const Node = struct {
     }
 };
 
+/// A node responsible for simply echoing its text arguments back to the user. The
+/// result of this is always success.
 pub const Echo = struct {
     const Self = @This();
     output: []const u8,
@@ -33,6 +44,8 @@ pub const Echo = struct {
     }
 };
 
+/// A node responsible for executing a given command on the local system. Result
+/// is depending on the exit status of the underlying command's execution.
 pub const Command = struct {
     const Self = @This();
     allocator: std.mem.Allocator,
@@ -70,6 +83,9 @@ pub const Command = struct {
     }
 };
 
+/// A node who's job it is to run all child items in sequence. When one fails, further
+/// items will not be processed and the failure status will be returned immediately.
+/// Otherwise, all itmes will be processed, returning success upon completion.
 pub fn SequentialContainer(comptime Size: usize) type {
     return struct {
         const Self = @This();

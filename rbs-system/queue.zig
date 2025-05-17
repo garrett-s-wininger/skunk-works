@@ -1,3 +1,6 @@
+//! A queuing implementation for RBS, responsible for taking outstanding work items
+//! and providing them to worker processes as their requests come in.
+
 const std = @import("std");
 
 const c = @cImport({
@@ -10,8 +13,7 @@ const c = @cImport({
 
 const socket_fs_path = "/tmp/rbs.sock";
 
-// NOTE(garrett): This should be revisited to ensure proper handling. In the meantime,
-// make sure that our socket is cleaned up before fully exiting.
+/// Performs cleanup required during a graceful application shutdown.
 fn cleanup(_: c_int) callconv(.C) void {
     _ = c.unlink(socket_fs_path);
     std.process.exit(0);
@@ -21,6 +23,7 @@ fn cleanup(_: c_int) callconv(.C) void {
 // SIG_IGN value of (*void)1 to a 4-byte aligned pointer to cooperate with Zig's alignment
 // checking. The net result is that we'll call a no-op function instead of no call at all,
 // but this should be minimal enough that it's not an issue. Famous last words.
+/// Empty function for signals which should effectively be a no-op.
 fn ignore_signal(_: c_int) callconv(.C) void {}
 
 pub fn main() !void {
