@@ -1,14 +1,8 @@
 //! A worker implementation for RBS that periodically reaches out to a queuing endpoint in
 //! order to obtain any available work.
 
+const c = @import("ffi.zig").c;
 const std = @import("std");
-
-const c = @cImport({
-    @cInclude("stdio.h");
-    @cInclude("sys/socket.h");
-    @cInclude("sys/un.h");
-    @cInclude("unistd.h");
-});
 
 pub fn main() !void {
     // NOTE(garrett): Basic socket creation

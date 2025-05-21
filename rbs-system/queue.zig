@@ -2,15 +2,8 @@
 //! and providing them to worker processes as their requests come in.
 
 const builtin = @import("builtin");
+const c = @import("ffi.zig").c;
 const std = @import("std");
-
-const c = @cImport({
-    @cInclude("signal.h");
-    @cInclude("stdio.h");
-    @cInclude("sys/socket.h");
-    @cInclude("sys/un.h");
-    @cInclude("unistd.h");
-});
 
 const socket_fs_path = "/tmp/rbs.sock";
 
