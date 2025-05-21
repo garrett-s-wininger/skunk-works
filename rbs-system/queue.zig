@@ -20,24 +20,19 @@ fn cleanup(_: c_int) callconv(.C) void {
     std.process.exit(0);
 }
 
-// NOTE(garrett): While not a perfect stand-in for C's SIG_IGN, we can't properly get MacOS'
-// SIG_IGN value of (*void)1 to a 4-byte aligned pointer to cooperate with Zig's alignment
-// checking. The net result is that we'll call a no-op function instead of no call at all,
-// but this should be minimal enough that it's not an issue. Famous last words.
-/// Empty function for signals which should effectively be a no-op.
-fn ignore_signal(_: c_int) callconv(.C) void {}
-
 /// Message provided when an inappropriate compilation target is attempted.
 const compilation_failure_message = "Current target is unsupported.";
+const SIG_IGN_SENTINEL: *align(1) anyopaque = @ptrFromInt(1);
+const SIG_IGN: ?*fn (c_int) callconv(.C) void = @ptrCast(SIG_IGN_SENTINEL);
 
 pub fn main() !void {
     // NOTE(garrett): Prepare signal handling on POSIX-based systems
     var ignore_action: c.struct_sigaction = .{};
 
     if (builtin.os.tag == .macos) {
-        ignore_action.__sigaction_u.__sa_handler = &ignore_signal;
+        ignore_action.__sigaction_u.__sa_handler = SIG_IGN;
     } else if (builtin.os.tag == .linux) {
-        ignore_action.__sigaction_handler.sa_handler = &ignore_signal;
+        ignore_action.__sigaction_handler.sa_handler = SIG_IGN;
     } else {
         @compileError(compilation_failure_message);
     }
