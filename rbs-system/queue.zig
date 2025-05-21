@@ -1,6 +1,7 @@
 //! A queuing implementation for RBS, responsible for taking outstanding work items
 //! and providing them to worker processes as their requests come in.
 
+const builtin = @import("builtin");
 const std = @import("std");
 
 const c = @cImport({
@@ -26,10 +27,20 @@ fn cleanup(_: c_int) callconv(.C) void {
 /// Empty function for signals which should effectively be a no-op.
 fn ignore_signal(_: c_int) callconv(.C) void {}
 
+/// Message provided when an inappropriate compilation target is attempted.
+const compilation_failure_message = "Current target is unsupported.";
+
 pub fn main() !void {
     // NOTE(garrett): Prepare signal handling on POSIX-based systems
     var ignore_action: c.struct_sigaction = .{};
-    ignore_action.__sigaction_u.__sa_handler = &ignore_signal;
+
+    if (builtin.os.tag == .macos) {
+        ignore_action.__sigaction_u.__sa_handler = &ignore_signal;
+    } else if (builtin.os.tag == .linux) {
+        ignore_action.__sigaction_handler.sa_handler = &ignore_signal;
+    } else {
+        @compileError(compilation_failure_message);
+    }
 
     const ignore_signals = [_]c_int{ c.SIGHUP, c.SIGUSR1, c.SIGUSR2 };
 
@@ -43,7 +54,14 @@ pub fn main() !void {
     }
 
     var cleanup_action: c.struct_sigaction = .{};
-    cleanup_action.__sigaction_u.__sa_handler = &cleanup;
+
+    if (builtin.os.tag == .macos) {
+        cleanup_action.__sigaction_u.__sa_handler = &cleanup;
+    } else if (builtin.os.tag == .linux) {
+        cleanup_action.__sigaction_handler.sa_handler = &cleanup;
+    } else {
+        @compileError(compilation_failure_message);
+    }
 
     const cleanup_signals = [_]c_int{ c.SIGINT, c.SIGTERM };
 
@@ -81,7 +99,6 @@ pub fn main() !void {
         return error.SocketBindFailure;
     }
 
-    // FIXME(garrett): Under SIGINT (and TERM), this does not get cleaned up, we'll want to add into handler
     defer _ = c.unlink(socket_fs_path);
     var buff: [1024]u8 = undefined;
 

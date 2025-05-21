@@ -7,6 +7,7 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
     });
 
+    worker.linkLibC();
     b.installArtifact(worker);
 
     const queue = b.addExecutable(.{
@@ -15,5 +16,6 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
     });
 
+    queue.linkLibC();
     b.installArtifact(queue);
 }
