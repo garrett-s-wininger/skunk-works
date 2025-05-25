@@ -5,5 +5,6 @@ pub const c = @cImport({
     @cInclude("stdio.h");
     @cInclude("sys/socket.h");
     @cInclude("sys/un.h");
+    @cInclude("sys/wait.h");
     @cInclude("unistd.h");
 });

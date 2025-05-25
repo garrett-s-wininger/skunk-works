@@ -13,19 +13,20 @@ fn cleanup(_: c_int) callconv(.C) void {
     std.process.exit(0);
 }
 
+/// Empty signal handler for MacOS on Apple Silicon which will not compile under Zig 0.14
+fn empty_handler(_: c_int) callconv(.C) void {}
+
 /// Message provided when an inappropriate compilation target is attempted.
 const compilation_failure_message = "Current target is unsupported.";
-const SIG_IGN_SENTINEL: *align(1) anyopaque = @ptrFromInt(1);
-const SIG_IGN: ?*fn (c_int) callconv(.C) void = @ptrCast(SIG_IGN_SENTINEL);
 
 pub fn main() !void {
     // NOTE(garrett): Prepare signal handling on POSIX-based systems
     var ignore_action: c.struct_sigaction = .{};
 
     if (builtin.os.tag == .macos) {
-        ignore_action.__sigaction_u.__sa_handler = SIG_IGN;
+        ignore_action.__sigaction_u.__sa_handler = empty_handler;
     } else if (builtin.os.tag == .linux) {
-        ignore_action.__sigaction_handler.sa_handler = SIG_IGN;
+        ignore_action.__sigaction_handler.sa_handler = c.SIG_IGN;
     } else {
         @compileError(compilation_failure_message);
     }
