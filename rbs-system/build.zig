@@ -18,4 +18,13 @@ pub fn build(b: *std.Build) void {
 
     queue.linkLibC();
     b.installArtifact(queue);
+
+    const supervisor = b.addExecutable(.{
+        .name = "rbs-supervisor",
+        .root_source_file = b.path("supervisor.zig"),
+        .target = b.graph.host,
+    });
+
+    supervisor.linkLibC();
+    b.installArtifact(supervisor);
 }
