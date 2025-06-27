@@ -1,0 +1,23 @@
+(lang dune 3.19)
+
+(name exp)
+
+(generate_opam_files true)
+
+(source
+ (github garrett-s-wininger/skunk-works))
+
+(authors "Garrett Wininger <garrett.s.wininger@outlook.com")
+
+(maintainers "Garrett Wininger <garrett.s.wininger@outlook.com")
+
+(license MIT)
+
+(documentation https://github.com/garrett-s-wininger/skunk-works/exp)
+
+(package
+ (name exp)
+ (synopsis "An experimental playground for language design")
+ (description
+  "Libraries, compilers, interpreters, and other work on programming languages")
+ (depends ocaml))
