@@ -4,70 +4,72 @@
 const c = @import("ffi.zig").c;
 const std = @import("std");
 
+const SupervisedProcess = enum { queue, worker };
+
+const process_type_names = [_][]const u8{ "Queue", "Worker" };
+
+const SubprocessContext = struct { path: []const u8, identifier: SupervisedProcess };
+
+const subprocesses = [_]SubprocessContext{ .{ .path = "zig-out/bin/rbs-queue", .identifier = .queue }, .{ .path = "zig-out/bin/rbs-worker", .identifier = .worker } };
+
+/// Launch a child process that will be supervised, ensuring the application does not
+/// terminate until each one has exited.
+fn launchSubprocess(working_directory: []const u8, process: SubprocessContext, allocator: std.mem.Allocator) !i32 {
+    // NOTE(garrett): Combine our working directory and the relative paths for our
+    // child processes so that we can properly start them via `exec` (on POSIX systems)
+    const binary_path = try allocator.alloc(u8, working_directory.len + process.path.len + 2);
+    defer allocator.free(binary_path);
+
+    @memcpy(binary_path[0..working_directory.len], working_directory);
+    binary_path[working_directory.len] = '/';
+    @memcpy(binary_path[working_directory.len + 1 .. binary_path.len - 1], process.path);
+    binary_path[binary_path.len - 1] = 0;
+
+    const child_pid = c.fork();
+
+    // TODO(garrett): Handle -1 ret val indicating a failure to fork
+    if (child_pid == 0) {
+        const exec_result = c.execl(@ptrCast(std.mem.sliceTo(binary_path, 0)), null);
+
+        if (exec_result == -1) {
+            std.process.exit(1);
+        }
+    }
+
+    return child_pid;
+}
+
 pub fn main() !void {
-    // Begin with configuring our fixed buffer for allocations within the program
-    var buffer: [1024]u8 = undefined;
+    // NOTE(garrett): Validate at compile-time that we haven't set up our type name matching
+    // correctly
+    if (comptime process_type_names.len != @typeInfo(SupervisedProcess).@"enum".fields.len) {
+        @compileError("Mismatch detected between supervised process type and name counts.");
+    }
+
+    const current_pid = c.getpid();
+    std.log.info("Supervisor launched as PID {d}.", .{current_pid});
+
+    // NOTE(garrett): Begin with configuring our fixed buffer for allocations
+    // within the program
+    var buffer: [4096]u8 = undefined;
     var fixed_allocator = std.heap.FixedBufferAllocator.init(&buffer);
     const allocator = fixed_allocator.allocator();
 
-    // TODO(garrett): This method limits us to being in the root source directory for
-    // running our application which is not desirable in a final product. We'll want
-    // to update this so that we gather the full binary path and assume that our
-    // companion programs are in the same directory so that we can run from any CWD
-    // on the system.
-
-    // Gather our current working directory for combining with other string slices for
-    // child binary location(s)
+    // NOTE(garrett): Gather our current working directory for combining with other
+    // string slices for child binary location(s)
     const working_directory = try std.process.getCwdAlloc(allocator);
     defer allocator.free(working_directory);
 
-    // Combine our working directory and the relative paths for our child processes
-    // so that we can properly start them via `exec` (on POSIX systems)
-    const relative_queue_binary = "/zig-out/bin/rbs-queue";
-    const queue_binary = try allocator.alloc(u8, working_directory.len + relative_queue_binary.len + 1);
-    queue_binary[queue_binary.len - 1] = 0;
-    defer allocator.free(queue_binary);
+    for (subprocesses) |process| {
+        std.log.info("Launching {s} process...", .{process_type_names[@intFromEnum(process.identifier)]});
+        const child_pid = try launchSubprocess(working_directory, process, allocator);
+        std.log.info("{s} process forked as PID {d}.", .{ process_type_names[@intFromEnum(process.identifier)], child_pid });
 
-    @memcpy(queue_binary[0..working_directory.len], working_directory);
-    @memcpy(queue_binary[working_directory.len .. queue_binary.len - 1], relative_queue_binary);
-
-    const relative_worker_binary = "/zig-out/bin/rbs-worker";
-    const worker_binary = try allocator.alloc(u8, working_directory.len + relative_worker_binary.len + 1);
-    worker_binary[worker_binary.len - 1] = 0;
-    defer allocator.free(worker_binary);
-
-    @memcpy(worker_binary[0..working_directory.len], working_directory);
-    @memcpy(worker_binary[working_directory.len .. worker_binary.len - 1], relative_worker_binary);
-
-    const queue_pid = c.fork();
-
-    // TODO(garrett): Handle -1 ret val indicating a failure to fork
-    if (queue_pid == 0) {
-        const exec_result = c.execl(@ptrCast(std.mem.sliceTo(queue_binary, 0)), null);
-
-        if (exec_result == -1) {
-            c.perror("queue initialization");
-            std.process.exit(1);
-        }
+        // FIXME(garrett): Ensure resources actually created before moving onto the next
     }
 
-    // TODO(garrett): Wait for a certain amount of time to ensure that our IPC mechanisms are fully
-    // configured
-
-    const worker_pid = c.fork();
-
-    // TODO(garrett): Handle -1 ret val indicating a failure to fork
-    if (worker_pid == 0) {
-        const exec_result = c.execl(@ptrCast(std.mem.sliceTo(worker_binary, 0)), null);
-
-        if (exec_result == -1) {
-            c.perror("worker initialization");
-            std.process.exit(1);
-        }
-    }
-
-    // TODO(garrett): Institute signal handler to forward signals to child processes
+    // FIXME(garrett): Institute signal handler to forward signals to child processes
 
     while (c.wait(null) > 0) {}
-    std.debug.print("All child processes exited.\n", .{});
+    std.log.info("All child processes exited.", .{});
 }
