@@ -3,6 +3,8 @@
 
 const builtin = @import("builtin");
 const c = @import("ffi.zig").c;
+const networking = @import("networking.zig");
+const signals = @import("signals/signals.zig");
 const std = @import("std");
 
 const socket_fs_path = "/tmp/rbs.sock";
@@ -13,33 +15,12 @@ fn cleanup(_: c_int) callconv(.c) void {
     std.process.exit(0);
 }
 
-/// Empty signal handler for MacOS on Apple Silicon which will not compile under Zig 0.14
-fn empty_handler(_: c_int) callconv(.c) void {}
-
-/// Message provided when an inappropriate compilation target is attempted.
-const compilation_failure_message = "Current target is unsupported.";
-
 pub fn main() !void {
     // NOTE(garrett): Prepare signal handling on POSIX-based systems
-    var ignore_action: c.struct_sigaction = .{};
-
-    if (builtin.os.tag == .macos) {
-        ignore_action.__sigaction_u.__sa_handler = empty_handler;
-    } else if (builtin.os.tag == .linux) {
-        ignore_action.__sigaction_handler.sa_handler = c.SIG_IGN;
-    } else {
-        @compileError(compilation_failure_message);
-    }
-
     const ignore_signals = [_]c_int{ c.SIGHUP, c.SIGUSR1, c.SIGUSR2 };
 
     for (ignore_signals) |signal| {
-        const handler_config_result = c.sigaction(signal, &ignore_action, null);
-
-        if (handler_config_result == -1) {
-            c.perror("ignore_sigaction");
-            return error.SignalHandlerConfigurationFailure;
-        }
+        signals.ignore(signal);
     }
 
     var cleanup_action: c.struct_sigaction = .{};
@@ -48,8 +29,6 @@ pub fn main() !void {
         cleanup_action.__sigaction_u.__sa_handler = &cleanup;
     } else if (builtin.os.tag == .linux) {
         cleanup_action.__sigaction_handler.sa_handler = &cleanup;
-    } else {
-        @compileError(compilation_failure_message);
     }
 
     const cleanup_signals = [_]c_int{ c.SIGINT, c.SIGTERM };
@@ -89,7 +68,7 @@ pub fn main() !void {
     }
 
     defer _ = c.unlink(socket_fs_path);
-    var buff: [1024]u8 = undefined;
+    var buff: [networking.DATAGRAM_SIZE]u8 = undefined;
 
     // NOTE(garrett): Receiving
     while (true) {

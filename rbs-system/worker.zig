@@ -2,6 +2,7 @@
 //! order to obtain any available work.
 
 const c = @import("ffi.zig").c;
+const networking = @import("networking.zig");
 const std = @import("std");
 
 pub fn main() !void {
@@ -38,7 +39,7 @@ pub fn main() !void {
     }
 
     // NOTE(garrett): Message pass
-    const message: [1024]u8 = undefined;
+    const message: [networking.DATAGRAM_SIZE]u8 = undefined;
 
     // TODO(garrett): Use sendmsg for more control
     const send_result = c.send(connection_socket, @ptrCast(message[0..]), message.len, 0);
