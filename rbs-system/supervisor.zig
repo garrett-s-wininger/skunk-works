@@ -64,8 +64,6 @@ pub fn main() !void {
         std.log.info("Launching {s} process...", .{process_type_names[@intFromEnum(process.identifier)]});
         const child_pid = try launchSubprocess(working_directory, process, allocator);
         std.log.info("{s} process forked as PID {d}.", .{ process_type_names[@intFromEnum(process.identifier)], child_pid });
-
-        // FIXME(garrett): Ensure resources actually created before moving onto the next
     }
 
     // FIXME(garrett): Institute signal handler to forward signals to child processes

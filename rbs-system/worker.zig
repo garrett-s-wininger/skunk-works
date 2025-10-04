@@ -23,9 +23,16 @@ pub fn main() !void {
     @memcpy(socket_address.sun_path[0..socket_fs_path.len], socket_fs_path);
 
     // NOTE(garrett): Connection
-    const connection_result = c.connect(connection_socket, @ptrCast(&socket_address), @sizeOf(c.sockaddr_un));
+    var connection_result = c.connect(connection_socket, @ptrCast(&socket_address), @sizeOf(c.sockaddr_un));
 
-    if (connection_result == -1) {
+    // NOTE(garrett): Loop until we've successfully conencted to the local socket
+    while (std.posix.errno(connection_result) == .NOENT) {
+        std.log.info("Waiting on local socket to be created...", .{});
+        std.Thread.sleep(1_000_000_000);
+        connection_result = c.connect(connection_socket, @ptrCast(&socket_address), @sizeOf(c.sockaddr_un));
+    }
+
+    if (std.posix.errno(connection_result) != .SUCCESS) {
         c.perror("connect");
         return error.ConnectionFailure;
     }

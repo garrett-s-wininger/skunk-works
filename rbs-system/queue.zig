@@ -8,13 +8,13 @@ const std = @import("std");
 const socket_fs_path = "/tmp/rbs.sock";
 
 /// Performs cleanup required during a graceful application shutdown.
-fn cleanup(_: c_int) callconv(.C) void {
+fn cleanup(_: c_int) callconv(.c) void {
     _ = c.unlink(socket_fs_path);
     std.process.exit(0);
 }
 
 /// Empty signal handler for MacOS on Apple Silicon which will not compile under Zig 0.14
-fn empty_handler(_: c_int) callconv(.C) void {}
+fn empty_handler(_: c_int) callconv(.c) void {}
 
 /// Message provided when an inappropriate compilation target is attempted.
 const compilation_failure_message = "Current target is unsupported.";
