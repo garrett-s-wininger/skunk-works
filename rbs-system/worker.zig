@@ -5,6 +5,8 @@ const c = @import("ffi.zig").c;
 const networking = @import("networking.zig");
 const std = @import("std");
 
+const socket_fs_path = networking.LOCAL_QUEUE_SOCKET;
+
 pub fn main() !void {
     // NOTE(garrett): Basic socket creation
     const connection_socket = c.socket(c.AF_UNIX, c.SOCK_DGRAM, 0);
@@ -20,7 +22,6 @@ pub fn main() !void {
     var socket_address: c.sockaddr_un = .{};
 
     socket_address.sun_family = c.AF_UNIX;
-    const socket_fs_path = "/tmp/rbs.sock";
     @memcpy(socket_address.sun_path[0..socket_fs_path.len], socket_fs_path);
 
     // NOTE(garrett): Connection

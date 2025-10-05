@@ -7,11 +7,12 @@ const networking = @import("networking.zig");
 const signals = @import("signals/signals.zig");
 const std = @import("std");
 
-const socket_fs_path = "/tmp/rbs.sock";
+const socket_fs_path = networking.LOCAL_QUEUE_SOCKET;
+var socket: networking.UnixSocket = undefined;
 
 /// Performs cleanup required during a graceful application shutdown.
 fn cleanup(_: c_int) callconv(.c) void {
-    _ = c.unlink(socket_fs_path);
+    socket.close();
     std.process.exit(0);
 }
 
@@ -43,37 +44,14 @@ pub fn main() !void {
     }
 
     // NOTE(garrett): Initial socket config
-    // TODO(garrett): More Zig-like interface should be possible for interfacing w/ POSIX
-    const connection_socket = c.socket(c.AF_UNIX, c.SOCK_DGRAM, 0);
+    socket = try networking.create_unix_socket(socket_fs_path);
+    defer socket.close();
 
-    if (connection_socket == -1) {
-        c.perror("socket");
-        return error.SocketCreationFailure;
-    }
-
-    defer _ = c.close(connection_socket);
-
-    var unix_address: c.sockaddr_un = .{};
-    unix_address.sun_family = c.AF_UNIX;
-
-    @memcpy(unix_address.sun_path[0..socket_fs_path.len], socket_fs_path);
-    unix_address.sun_path[socket_fs_path.len] = 0;
-
-    // NOTE(garrett): Official binding
-    const bind_result = c.bind(connection_socket, @ptrCast(&unix_address), @sizeOf(c.sockaddr_un));
-
-    if (bind_result == -1) {
-        c.perror("bind");
-        return error.SocketBindFailure;
-    }
-
-    defer _ = c.unlink(socket_fs_path);
     var buff: [networking.DATAGRAM_SIZE]u8 = undefined;
 
-    // NOTE(garrett): Receiving
+    // NOTE(garrett): Main queue logic
     while (true) {
-        // TODO(garrett): Likely want to do recvmsg for more advanced handling
-        const message_size = c.recv(connection_socket, @ptrCast(buff[0..]), buff.len, 0);
+        const message_size = socket.receive(&buff);
         std.debug.print("Received message of {d} bytes.\n", .{message_size});
     }
 

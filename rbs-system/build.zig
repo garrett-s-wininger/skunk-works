@@ -6,10 +6,7 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
     }) });
 
-    signalLib.addCSourceFile(.{
-        .file = .{ .cwd_relative = "signals/signals.c" },
-        .flags = &.{ "-Wall", "-Werror" }
-    });
+    signalLib.addCSourceFile(.{ .file = .{ .cwd_relative = "signals/signals.c" }, .flags = &.{ "-Wall", "-Werror" } });
 
     const worker = b.addExecutable(.{ .name = "rbs-worker", .root_module = b.createModule(.{
         .root_source_file = b.path("worker.zig"),
