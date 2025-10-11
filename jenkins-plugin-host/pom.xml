@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.garrettswininger</groupId>
-    <artifactId>plugin-host</artifactId>
+    <artifactId>plugin-host-umbrella</artifactId>
     <version>0.1.0-dev</version>
 
     <licenses>
@@ -13,48 +13,10 @@
         </license>
     </licenses>
 
-    <repositories>
-        <repository>
-            <id>repo.jenkins-ci.org</id>
-            <url>https://repo.jenkins-ci.org/public/</url>
-        </repository>
-    </repositories>
-    <pluginRepositories>
-        <pluginRepository>
-            <id>repo.jenkins-ci.org</id>
-            <url>https://repo.jenkins-ci.org/public/</url>
-        </pluginRepository>
-    </pluginRepositories>
+    <modules>
+        <module>common-build</module>
+        <module>host</module>
+    </modules>
 
-    <parent>
-        <groupId>org.jenkins-ci.plugins</groupId>
-        <artifactId>plugin</artifactId>
-        <version>5.27</version>
-        <relativePath />
-    </parent>
-
-    <properties>
-        <jenkins.version>2.531</jenkins.version>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.14.0</version>
-                <configuration>
-                    <release>21</release>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.jenkins-ci.tools</groupId>
-                <artifactId>maven-hpi-plugin</artifactId>
-                <version>3.1762.vd3ff902a_5b_c4</version>
-            </plugin>
-        </plugins>
-    </build>
-
-    <packaging>hpi</packaging>
+    <packaging>pom</packaging>
 </project>

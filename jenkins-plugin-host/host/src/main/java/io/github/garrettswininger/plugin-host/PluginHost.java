@@ -16,6 +16,7 @@ import java.util.logging.Logger;
 import static java.nio.file.StandardWatchEventKinds.ENTRY_CREATE;
 import static java.nio.file.StandardWatchEventKinds.ENTRY_DELETE;
 import static java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY;
+import static java.nio.file.StandardWatchEventKinds.OVERFLOW;
 
 public class PluginHost extends Plugin {
     private final static Logger LOGGER = Logger.getLogger(
@@ -32,6 +33,25 @@ public class PluginHost extends Plugin {
                 );
             }
         }
+    }
+
+    void deregisterHostedPlugin(Path pluginPath) {
+        LOGGER.info(String.format("Deregistering: %s", pluginPath.toString()));
+    }
+
+    void registerHostedPlugin(Path pluginPath) {
+        LOGGER.info(
+            String.format(
+                "Registering: %s",
+                pluginPath.getFileName()
+            )
+        );
+    }
+
+    void reloadHostedPlugin(Path pluginPath) {
+        LOGGER.info(
+            String.format("Re-registering: %s", pluginPath.toString())
+        );
     }
 
     @Override
@@ -70,15 +90,31 @@ public class PluginHost extends Plugin {
                         // may not be ordered from the underlying watch system
                         for (final var event: key.pollEvents()) {
                             final var kind = event.kind();
+                            final var path = autoloadDir.toPath().resolve(
+                                (Path)event.context()
+                            );
+
+                            final var isDirectory = Files.isDirectory(path);
+                            final var hasExtension = path.getFileName()
+                                .toString().endsWith(".jar");
+
+                            final var isApplicable = hasExtension && !isDirectory;
+
+                            if ((kind == ENTRY_CREATE || kind == ENTRY_MODIFY)
+                                    && !isApplicable) {
+                                continue;
+                            }
 
                             if (kind == ENTRY_CREATE) {
-                                LOGGER.info("File created");
+                                registerHostedPlugin(path);
                             } else if (kind == ENTRY_DELETE) {
-                                LOGGER.info("File deleted");
+                                deregisterHostedPlugin(path);
                             } else if (kind == ENTRY_MODIFY) {
-                                LOGGER.info("File modified");
-                            } else {
-                                LOGGER.info("Overflow - Some events not delivered");
+                                reloadHostedPlugin(path);
+                            } else if (kind == OVERFLOW) {
+                                LOGGER.info(
+                                    "Overflow - Some events not delivered"
+                                );
                             }
                         }
 
