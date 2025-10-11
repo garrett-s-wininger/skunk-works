@@ -1,0 +1,5 @@
+<?jelly escape-by-default="true" ?>
+<div>
+  Experimental host for plugins that can be live-edited without a full Jenkins
+  restart
+</div>
