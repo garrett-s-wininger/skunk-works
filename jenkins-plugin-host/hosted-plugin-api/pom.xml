@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>io.github.garrettswininger</groupId>
+    <artifactId>hosted-plugin-api</artifactId>
+    <version>0.1.0-dev</version>
+
+    <parent>
+        <groupId>io.github.garrettswininger</groupId>
+        <artifactId>common-build</artifactId>
+        <version>0.1.0-dev</version>
+        <relativePath>../common-build/pom.xml</relativePath>
+    </parent>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.jenkins-ci.main</groupId>
+            <artifactId>jenkins-core</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+    <packaging>jar</packaging>
+</project>

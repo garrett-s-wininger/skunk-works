@@ -15,7 +15,9 @@
 
     <modules>
         <module>common-build</module>
+        <module>example</module>
         <module>host</module>
+        <module>hosted-plugin-api</module>
     </modules>
 
     <packaging>pom</packaging>

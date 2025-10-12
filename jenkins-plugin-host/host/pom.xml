@@ -27,24 +27,40 @@
     </pluginRepositories>
 
     <properties>
+        <hpi.bundledArtifacts>hosted-plugin-api</hpi.bundledArtifacts>
         <jenkins.version>2.531</jenkins.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.github.garrettswininger</groupId>
+                <artifactId>common-build</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.garrettswininger</groupId>
+            <artifactId>hosted-plugin-api</artifactId>
+            <scope>compile</scope>
+        </dependency>
+    </dependencies>
 
     <build>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.14.0</version>
-                <configuration>
-                    <release>21</release>
-                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.jenkins-ci.tools</groupId>
                 <artifactId>maven-hpi-plugin</artifactId>
-                <version>3.1762.vd3ff902a_5b_c4</version>
             </plugin>
         </plugins>
     </build>
