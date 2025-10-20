@@ -50,6 +50,11 @@ public final class PluginHost extends Plugin {
         }
     }
 
+    // NOTE(garrett): The no-arg constructor is deprecated, to help get away
+    // from subclassing, we'll re-investigate more modern APIs in the future
+    @SuppressWarnings("deprecation")
+    PluginHost() {}
+
     @Override
     public void start() {
         final var dataDir = getDataDirectory();
@@ -102,11 +107,11 @@ public final class PluginHost extends Plugin {
                             }
 
                             if (kind == ENTRY_CREATE) {
-                                this.registry.register(path);
+                                registry.register(path);
                             } else if (kind == ENTRY_DELETE) {
-                                this.registry.deregister(path);
+                                registry.deregister(path);
                             } else if (kind == ENTRY_MODIFY) {
-                                this.registry.reload(path);
+                                registry.reload(path);
                             } else if (kind == OVERFLOW) {
                                 LOGGER.info(
                                     "Overflow - Some events not delivered"

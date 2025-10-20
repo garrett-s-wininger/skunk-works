@@ -55,6 +55,11 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>3.14.0</version>
                     <configuration>
+                        <compilerArgs>
+                            <arg>-proc:full</arg>
+                            <arg>-Werror</arg>
+                            <arg>-Xlint:all</arg>
+                        </compilerArgs>
                         <release>17</release>
                     </configuration>
                 </plugin>

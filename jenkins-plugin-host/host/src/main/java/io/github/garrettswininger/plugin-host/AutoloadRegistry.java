@@ -3,6 +3,7 @@ package io.github.garrettswininger.pluginhost;
 import hudson.ExtensionPoint;
 import io.github.garrettswininger.hosting.DynamicPlugin;
 import io.github.garrettswininger.hosting.Hosted;
+import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -34,6 +35,9 @@ class AutoloadRegistry {
         this.registrations = new HashMap<>();
     }
 
+    // NOTE(garrett): We have to do unchecked casts here as we need to manually
+    // reify extension types at runtime
+    @SuppressWarnings("unchecked")
     private
     Optional<DynamicPlugin<? extends ExtensionPoint, ? extends ExtensionPoint>>
     entryToPlugin(ClassLoader loader, JarEntry entry) {
@@ -96,13 +100,90 @@ class AutoloadRegistry {
 
         LOGGER.info(
             String.format(
-                "Loaded %s extension: %s",
+                "Loaded %s extension from JAR: %s",
                 plugin.extension.getName(),
                 plugin.implementation.getName()
             )
         );
 
         return Optional.of(plugin);
+    }
+
+    // NOTE(garrett): We must manually reify types at runtime for loaded
+    // extensions
+    @SuppressWarnings("unchecked")
+    private Optional<HostedRegistration> createRegistrationFromJar(File file) {
+        final URLClassLoader loader;
+
+        try {
+            loader = new URLClassLoader(
+                new URL[]{file.toURI().toURL()},
+                this.getClass().getClassLoader()
+            );
+        } catch (MalformedURLException ex) {
+            LOGGER.warning(
+                String.format(
+                    "Could not register plugins for path, malformed URL: %s",
+                    file.getPath().toString()
+                )
+            );
+
+            return Optional.empty();
+        }
+
+        final Map<
+            Class<? extends ExtensionPoint>, List<? extends ExtensionPoint>
+        > pathRegistrations = new HashMap<>();
+
+        try (var jar = new JarFile(file)) {
+            jar.stream()
+                .filter(entry -> entry.getName().endsWith(".class"))
+                .map(entry -> entryToPlugin(loader, entry))
+                .forEach(entry -> {
+                    entry.ifPresent(plugin -> {
+                        ExtensionPoint instance;
+
+                        try {
+                            instance = plugin.getInstance();
+                        } catch (Exception ex) {
+                            LOGGER.warning(
+                                String.format(
+                                    "Failed to instantiate extension (%s): %s",
+                                    plugin.implementation.getName(),
+                                    ex.getMessage()
+                                )
+                            );
+
+                            return;
+                        }
+
+                        if (pathRegistrations.containsKey(plugin.extension)) {
+                            final var registeredExtensions =
+                                pathRegistrations.get(plugin.extension);
+
+                            ((List<ExtensionPoint>)registeredExtensions).add(instance);
+                        } else {
+                            final List<ExtensionPoint> instances =
+                                new ArrayList<>();
+
+                            instances.add(instance);
+                            pathRegistrations.put(plugin.extension, instances);
+                        }
+                    });
+                });
+        } catch (IOException ex) {
+            LOGGER.warning(
+                String.format(
+                    "Failed to access JAR (%s): %s",
+                    file.getPath().toString(),
+                    ex.getMessage()
+                )
+            );
+
+            return Optional.empty();
+        }
+
+        return Optional.of(new HostedRegistration(loader, pathRegistrations));
     }
 
     void deregister(Path pluginPath) {
@@ -148,6 +229,9 @@ class AutoloadRegistry {
         this.registrations.remove(pluginPath);
     }
 
+    // NOTE(garrett): We must manually reify the type cast for the extension
+    // point
+    @SuppressWarnings("unchecked")
     void register(Path pluginPath) {
         LOGGER.info(
             String.format(
@@ -156,87 +240,36 @@ class AutoloadRegistry {
             )
         );
 
-        final var file = pluginPath.toFile();
-        final URLClassLoader loader;
+        final var registration = this.createRegistrationFromJar(pluginPath.toFile());
 
-        try {
-            loader = new URLClassLoader(
-                new URL[]{file.toURI().toURL()},
-                this.getClass().getClassLoader()
-            );
-        } catch (MalformedURLException ex) {
-            LOGGER.warning(
-                String.format(
-                    "Could not register plugins for path, malformed URL: %s",
-                    pluginPath.toString()
-                )
-            );
-
-            return;
-        }
-
-        final Map<
-            Class<? extends ExtensionPoint>, List<? extends ExtensionPoint>
-        > pathRegistrations = new HashMap<>();
-
-        try (var jar = new JarFile(file)) {
-            jar.stream()
-                .filter(entry -> entry.getName().endsWith(".class"))
-                .map(entry -> entryToPlugin(loader, entry))
-                .filter(entry -> entry.isPresent())
+        registration.ifPresent(pathRegistration -> {
+            pathRegistration.extensions()
+                .entrySet()
+                .stream()
                 .forEach(entry -> {
-                    final var plugin = entry.get();
-                    ExtensionPoint instance;
-
-                    try {
-                        instance = plugin.getInstance();
-                    } catch (Exception ex) {
-                        LOGGER.warning(
-                            String.format(
-                                "Failed to instantiate extension (%s): %s",
-                                plugin.implementation.getName(),
-                                ex.getMessage()
-                            )
-                        );
-
-                        return;
-                    }
-
-                    if (pathRegistrations.containsKey(plugin.extension)) {
-                        final var registeredExtensions =
-                            pathRegistrations.get(plugin.extension);
-
-                        ((List<ExtensionPoint>)registeredExtensions).add(instance);
-                    } else {
-                        final List<ExtensionPoint> instances =
-                            new ArrayList<>();
-
-                        instances.add(instance);
-                        pathRegistrations.put(plugin.extension, instances);
-                    }
-
+                    final var extensionType = entry.getKey();
                     final var extensionList = Jenkins.get()
-                        .getExtensionList((Class<ExtensionPoint>)plugin.extension);
+                        .getExtensionList((Class<ExtensionPoint>)extensionType);
 
-                    extensionList.add(instance);
+                    entry.getValue()
+                        .stream()
+                        .forEach(instance -> {
+                            // NOTE(garrett): The `add` method is deprecated but `add` with
+                            // an index is not, though they do the same thing under the hood
+                            extensionList.add(0, instance);
+
+                            LOGGER.info(
+                                String.format(
+                                    "%s extension: %s successfully installed into the instance",
+                                    extensionType.getName(),
+                                    instance.getClass().getName()
+                                )
+                            );
+                        });
                 });
-        } catch (IOException ex) {
-            LOGGER.warning(
-                String.format(
-                    "Failed to access JAR (%s): %s",
-                    pluginPath.toString(),
-                    ex.getMessage()
-                )
-            );
-        }
 
-        this.registrations.put(
-            pluginPath,
-            new HostedRegistration(
-                loader,
-                pathRegistrations
-            )
-        );
+            this.registrations.put(pluginPath, pathRegistration);
+        });
     }
 
     void reload(Path pluginPath) {
