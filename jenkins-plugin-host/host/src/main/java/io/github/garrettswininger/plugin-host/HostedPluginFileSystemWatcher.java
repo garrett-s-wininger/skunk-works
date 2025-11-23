@@ -1,7 +1,7 @@
 package io.github.garrettswininger.pluginhost;
 
-import hudson.ExtensionPoint;
-import hudson.Plugin;
+import hudson.Extension;
+import hudson.model.RootAction;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystems;
@@ -19,19 +19,16 @@ import static java.nio.file.StandardWatchEventKinds.ENTRY_DELETE;
 import static java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY;
 import static java.nio.file.StandardWatchEventKinds.OVERFLOW;
 
-public final class PluginHost extends Plugin {
+@Extension
+public final class HostedPluginFileSystemWatcher implements RootAction {
     private final static Logger LOGGER = Logger.getLogger(
-        PluginHost.class.getName()
+        HostedPluginFileSystemWatcher.class.getName()
     );
 
     private final static AutoloadRegistry registry = new AutoloadRegistry();
 
     private File getDataDirectory() {
-        var jenkins = Jenkins.get();
-        var wrapper = jenkins.getPluginManager().getPlugin(this.getClass());
-        var rootDir = jenkins.getRootDir();
-
-        return new File(rootDir, wrapper.getShortName());
+        return new File(Jenkins.get().getRootDir(), "hosted-plugins");
     }
 
     private File getAutoloadDirectory() {
@@ -50,13 +47,27 @@ public final class PluginHost extends Plugin {
         }
     }
 
-    // NOTE(garrett): The no-arg constructor is deprecated, to help get away
-    // from subclassing, we'll re-investigate more modern APIs in the future
-    @SuppressWarnings("deprecation")
-    PluginHost() {}
+    public HostedPluginFileSystemWatcher() {
+        /**
+         * NOTE(garrett): In practical testing, a full JVM shutdown occurs in a
+         * graceful restart. If we were to reload this plugin, the existing
+         * FS watcher and daemon thread created within this function would be
+         * automatically cleaned up without us having to register JVM shutdown
+         * hooks.
+         */
+        this.onStart();
+    }
 
     @Override
-    public void start() {
+    public String getIconFileName() { return null; }
+
+    @Override
+    public String getDisplayName() { return null; }
+
+    @Override
+    public String getUrlName() { return null; }
+
+    public void onStart() {
         final var dataDir = getDataDirectory();
         final var autoloadDir = getAutoloadDirectory();
         final var requiredDirs = List.of(dataDir, autoloadDir);
@@ -134,9 +145,8 @@ public final class PluginHost extends Plugin {
                     )
                 );
             }
-        });
+        }, "Jenkins-Plugin-Host-FS-Watcher");
 
-        dirWatcherDaemon.setName("Plugin Host Filesystem Watcher");
         dirWatcherDaemon.setDaemon(true);
         dirWatcherDaemon.start();
     }
