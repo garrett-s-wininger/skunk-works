@@ -58,7 +58,7 @@
                         <compilerArgs>
                             <arg>-proc:full</arg>
                             <arg>-Werror</arg>
-                            <arg>-Xlint:all</arg>
+                            <arg>-Xlint:all,-processing</arg>
                         </compilerArgs>
                         <release>17</release>
                     </configuration>
