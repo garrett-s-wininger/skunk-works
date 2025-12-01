@@ -89,7 +89,9 @@ public final class HostedPluginFileSystemWatcher implements RootAction {
         LOGGER.info("All required directories are present or have been created.");
 
         try (Stream<Path> paths = Files.list(autoloadDir.toPath())) {
-            paths.forEach(path -> {
+            paths.filter(path ->
+                path.toFile().isFile() && path.toString().endsWith(".jar")
+            ).forEach(path -> {
                 registry.register(path);
             });
         } catch (IOException ex) {
