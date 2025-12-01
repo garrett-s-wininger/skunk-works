@@ -7,8 +7,6 @@ import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardWatchEventKinds;
-import java.nio.file.WatchEvent;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.concurrent.ConcurrentHashMap;
@@ -139,19 +137,28 @@ public final class HostedPluginFileSystemWatcher implements RootAction {
             while (true) {
                 try {
                     final var event = operationsQueue.take();
+                    final var path = event.path();
+                    operationsMap.remove(path);
+
                     final var action = event.action();
 
-                    // TODO(garrett): Actually do useful things
-                    switch (action) {
-                        default:
-                            LOGGER.info(
-                                String.format(
-                                    "OBTAINED ACTION: %s (%s)\n",
-                                    event.path().toString(),
-                                    action.toString()
-                                )
-                            );
+                    LOGGER.info(
+                        String.format(
+                            "Action triggered: %s (%s)",
+                            path.toString(),
+                            action.toString()
+                        )
+                    );
 
+                    switch (action) {
+                        case REGISTER:
+                            registry.register(path);
+                            break;
+                        case DEREGISTER:
+                            registry.deregister(path);
+                            break;
+                        case RELOAD:
+                            registry.reload(path);
                             break;
                     }
                 } catch (InterruptedException ex) {
@@ -164,6 +171,102 @@ public final class HostedPluginFileSystemWatcher implements RootAction {
     }
 
     private class AutoloadDirectoryWatcher implements Runnable {
+        private AutoloadEvent coalesceEvents(AutoloadEvent previous, AutoloadEventAction action) {
+            final var path = previous.path();
+            final var prevAction = previous.action();
+            operationsQueue.remove(previous);
+
+            AutoloadEventAction newAction = null;
+
+            switch (prevAction) {
+                case REGISTER:
+                    switch (action) {
+                        case REGISTER:
+                            throw new IllegalStateException(
+                                "Encountered duplicate registration events"
+                            );
+                        case DEREGISTER:
+                            LOGGER.info(
+                                String.format(
+                                    "Registration no longer applicable for %s",
+                                    path.toString()
+                                )
+                            );
+
+                            return null;
+                        case RELOAD:
+                            newAction = AutoloadEventAction.REGISTER;
+                            break;
+                    }
+
+                    break;
+                case DEREGISTER:
+                    switch (action) {
+                        case REGISTER:
+                            // TODO(garrett): Some form of hash check to handle
+                            LOGGER.warning(
+                                "Re-registration after deletion currently unsupported"
+                            );
+
+                            return null;
+                        case DEREGISTER:
+                            throw new IllegalStateException(
+                                "Encountered duplicate deregistration events"
+                            );
+                        case RELOAD:
+                            throw new IllegalStateException(
+                                "Encountered modification after deletion"
+                            );
+                    }
+
+                    break;
+                case RELOAD:
+                    switch (action) {
+                        case REGISTER:
+                            throw new IllegalStateException(
+                                "Encountered registration after modification"
+                            );
+                        case DEREGISTER:
+                            newAction = AutoloadEventAction.DEREGISTER;
+                            break;
+                        case RELOAD:
+                            newAction = AutoloadEventAction.RELOAD;
+                            break;
+                    }
+
+                    break;
+            }
+
+            if (newAction == null) {
+                throw new IllegalStateException(
+                    String.format(
+                        "Coalescing returned an invalid state (%s followed by %s)",
+                        prevAction.toString(),
+                        action.toString()
+                    )
+                );
+            }
+
+            LOGGER.info(
+                String.format(
+                    "Coalesced existing event for %s (%s, %s => %s)",
+                    path.toString(),
+                    prevAction.toString(),
+                    action.toString(),
+                    newAction.toString()
+                )
+            );
+
+            final var newEvent = new AutoloadEvent(
+                newAction,
+                LocalDateTime.now().plusSeconds(30),
+                path
+            );
+
+            operationsQueue.put(newEvent);
+            return newEvent;
+        }
+
         @Override
         public void run() {
             final var autoloadDir = getAutoloadDirectory();
@@ -221,19 +324,23 @@ public final class HostedPluginFileSystemWatcher implements RootAction {
                             if (action == null) {
                                 throw new IllegalStateException(
                                     String.format(
-                                        "Encountered an unexpected event type: %s",
+                                        "Encountered an unexpected FS event type: %s",
                                         kind.toString()
                                     )
                                 );
                             }
 
                             operationsMap.compute(path, ((pathKey, mappedEvent) -> {
-                                // FIXME(garrett): Actually compute
                                 if (mappedEvent != null) {
-                                    LOGGER.info("PRESENT!");
-                                    return mappedEvent;
+                                    return coalesceEvents(mappedEvent, action);
                                 } else {
-                                    LOGGER.info("MISSING!");
+                                    LOGGER.info(
+                                        String.format(
+                                            "New event detected for %s (%s)",
+                                            path.toString(),
+                                            action.toString()
+                                        )
+                                    );
 
                                     final var newEvent = new AutoloadEvent(
                                         action,
