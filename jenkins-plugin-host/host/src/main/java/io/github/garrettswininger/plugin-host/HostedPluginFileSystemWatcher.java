@@ -15,6 +15,7 @@ import java.util.concurrent.DelayQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.List;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 import jenkins.model.Jenkins;
 
 import static java.nio.file.StandardWatchEventKinds.ENTRY_CREATE;
@@ -77,13 +78,28 @@ public final class HostedPluginFileSystemWatcher implements RootAction {
     public String getUrlName() { return null; }
 
     public void onStart() {
+        final var autoloadDir = getAutoloadDirectory();
+
         final var requiredDirs = List.of(
             getDataDirectory(),
-            getAutoloadDirectory()
+            autoloadDir
         );
 
         requiredDirs.forEach(dir -> createDirectoryIfNotExists(dir));
         LOGGER.info("All required directories are present or have been created.");
+
+        try (Stream<Path> paths = Files.list(autoloadDir.toPath())) {
+            paths.forEach(path -> {
+                registry.register(path);
+            });
+        } catch (IOException ex) {
+            LOGGER.warning(
+                String.format(
+                    "Failed to list contents of %s for plugin startup loading",
+                    autoloadDir
+                )
+            );
+        }
 
         final var dirWatcherDaemon = new Thread(
             new AutoloadDirectoryWatcher(),
