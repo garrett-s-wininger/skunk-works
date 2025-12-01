@@ -4,11 +4,17 @@ import hudson.ExtensionPoint;
 import io.github.garrettswininger.hosting.DynamicPlugin;
 import io.github.garrettswininger.hosting.Hosted;
 import java.io.File;
+import java.io.InputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -20,6 +26,7 @@ import java.util.logging.Logger;
 import jenkins.model.Jenkins;
 
 record HostedRegistration(
+    byte[] digest,
     URLClassLoader loader,
     Map<Class<? extends ExtensionPoint>, List<? extends ExtensionPoint>> extensions
 ) {}
@@ -33,6 +40,40 @@ class AutoloadRegistry {
 
     AutoloadRegistry() {
         this.registrations = new HashMap<>();
+    }
+
+    private byte[] calculateDigest(Path path) {
+        try {
+            final var digest = MessageDigest.getInstance("MD5");
+
+            try (final var input = Files.newInputStream(path);
+                    final var digestStream = new DigestInputStream(input, digest)) {
+                final var buffer = new byte[4096];
+
+                while (digestStream.read(buffer, 0, buffer.length) != -1) {
+                    // NOTE(garrett): Don't need to do anything, just pass data
+                    // through the stream to update the digest
+                }
+
+                return digest.digest();
+            } catch (IOException ex) {
+                LOGGER.warning(
+                    String.format(
+                        "Unable to access contents of %s for digest calculation",
+                        path.toString()
+                    )
+                );
+
+                return new byte[0];
+            }
+        } catch (NoSuchAlgorithmException ex) {
+            LOGGER.warning(
+                "Unable to instantiate the requested hash provider, cannot" +
+                " validate file checksums"
+            );
+
+            return new byte[0];
+        }
     }
 
     // NOTE(garrett): We have to do unchecked casts here as we need to manually
@@ -183,7 +224,13 @@ class AutoloadRegistry {
             return Optional.empty();
         }
 
-        return Optional.of(new HostedRegistration(loader, pathRegistrations));
+        return Optional.of(
+            new HostedRegistration(
+                calculateDigest(file.toPath()),
+                loader,
+                pathRegistrations
+            )
+        );
     }
 
     void deregister(Path pluginPath) {
@@ -273,8 +320,41 @@ class AutoloadRegistry {
     }
 
     void reload(Path pluginPath) {
+        final var currentRegistration = this.registrations.get(pluginPath);
+
+        if (currentRegistration == null) {
+            register(pluginPath);
+            return;
+        }
+
         LOGGER.info(
             String.format("Re-registering: %s", pluginPath.toString())
         );
+
+        final var newDigest = calculateDigest(pluginPath);
+        final var existingDigest = currentRegistration.digest();
+
+        if (newDigest.length == 0 || existingDigest.length == 0) {
+            LOGGER.warning(
+                String.format(
+                    "Checkum calculation was unable to be completed, %s will" +
+                    " not be reloaded",
+                    pluginPath.toString()
+                )
+            );
+        }
+
+        if (Arrays.equals(newDigest, existingDigest)) {
+            LOGGER.info(
+                String.format(
+                    "Old and new JAR hashes at %s are identical, nothing to do",
+                    pluginPath.toString()
+                )
+            );
+
+            return;
+        }
+
+        // TODO(garrett): Perform Jenkins-level logic to do a dynamic reload
     }
 }
