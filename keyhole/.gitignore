@@ -1,0 +1,10 @@
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Generators
+Makefile
+
+# Binary
+keyhole
