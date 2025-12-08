@@ -1,10 +1,12 @@
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <ctime>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <print>
+#include <span>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -128,7 +130,6 @@ using ConstantPoolEntry = std::variant<
 >;
 
 auto make_constant_pool_entry(ConstantPoolTag tag, std::ifstream& content_stream) -> ConstantPoolEntry {
-    // FIXME(garrett): One of these is parsing extra or too-little data
     switch (tag) {
         case ConstantPoolTag::Class: {
             auto data = ConstantPoolClass{};
@@ -152,7 +153,7 @@ auto make_constant_pool_entry(ConstantPoolTag tag, std::ifstream& content_stream
             auto string_length = read_multi_byte_value<uint16_t>(content_stream);
 
             data.text = std::string(string_length, '\0');
-            content_stream.read(data.text.data(), data.text.capacity());
+            content_stream.read(data.text.data(), data.text.size());
 
             return data;
         }
@@ -166,8 +167,6 @@ private:
     ClassFileVersion version;
     std::vector<ConstantPoolEntry> constant_pool;
 public:
-    ClassFile() : version(ClassFileVersion{55, 0}) {}
-
     ClassFile(const std::filesystem::path& path) {
         const auto path_string = path.string();
 
@@ -201,10 +200,15 @@ public:
         version.minor_version = read_multi_byte_value<uint16_t>(content_stream);
         version.major_version = read_multi_byte_value<uint16_t>(content_stream);
 
+        // NOTE(garrett): JVMLS 4.1 - The ClassFile Structure, this data returns
+        // 1 higher than the actual pool count
         const auto constant_pool_count = read_multi_byte_value<uint16_t>(content_stream);
-        constant_pool = std::vector<ConstantPoolEntry>(constant_pool_count);
+        const auto real_entries = constant_pool_count - 1;
 
-        for (auto i = 0; i < constant_pool_count; ++i) {
+        constant_pool = std::vector<ConstantPoolEntry>();
+        constant_pool.reserve(real_entries);
+
+        for (auto i = 0; i < real_entries; ++i) {
             uint8_t tag{};
             content_stream.read(reinterpret_cast<char*>(&tag), sizeof(tag));
 
@@ -221,22 +225,19 @@ public:
                 );
             }
 
-            auto entry = make_constant_pool_entry(
-                static_cast<ConstantPoolTag>(tag),
-                content_stream
+            constant_pool.push_back(
+                make_constant_pool_entry(
+                    static_cast<ConstantPoolTag>(tag),
+                    content_stream
+                )
             );
-
-            constant_pool.push_back(entry);
-
-            // TODO(garrett): Remove, more constant pool parsing
-            std::visit([](auto&& value) {
-                using T = std::decay_t<decltype(value)>;
-
-                if constexpr (std::is_same_v<T, ConstantPoolUTF8>) {
-                    std::println("UTF-8 Value: {}", value.text);
-                }
-            }, entry);
         }
+
+        // TODO(garrett): More Class File parsing
+    }
+
+    auto constant_pool_entries() const -> std::span<const ConstantPoolEntry> {
+        return constant_pool;
     }
 
     auto major_version() const -> uint16_t {
@@ -292,12 +293,27 @@ auto main(int argc, char** argv) -> int {
         bytecode::ClassFile class_file{target};
         auto major = class_file.major_version();
 
+        std::println("ClassFile Version:");
+
         std::println(
-            "ClassFile version {}.{} (Java {})",
+            "  {}.{} (Java {})",
             major,
             class_file.minor_version(),
             bytecode::jdk_version(major)
         );
+
+        const auto entries = class_file.constant_pool_entries();
+
+        if (entries.size() > 0) {
+            std::println("UTF-8 Constant Pool Entries:");
+
+            for (auto i = 0uz; i < entries.size(); ++i) {
+                if (std::holds_alternative<bytecode::ConstantPoolUTF8>(entries[i])) {
+                    const auto data = std::get<bytecode::ConstantPoolUTF8>(entries[i]);
+                    std::println("  #{}: {}", i + 1, data.text);
+                }
+            }
+        }
     } catch (const std::runtime_error& e) {
         logging::error(e.what());
         return EXIT_FAILURE;
