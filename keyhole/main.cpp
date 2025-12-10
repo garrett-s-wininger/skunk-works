@@ -48,6 +48,7 @@ auto main(int argc, char** argv) -> int {
         auto major = class_file.major_version();
 
         std::println("Class File Overview:");
+        std::println("  Name - {}", class_file.name());
 
         std::println(
             "  Version - {}.{} (Java {})",
@@ -56,6 +57,9 @@ auto main(int argc, char** argv) -> int {
             bytecode::jdk_version(major)
         );
 
+        // NOTE(garrett): The ACC_SUPER flag is enabled by default in JDK 8+ and
+        // assumed to be in effect, regardless of actual flags in the Class File
+        // (JVMLS Table 4.1-B)
         std::println(
             "  Access Flags - 0x{:04X}",
             class_file.access_flags() ^ static_cast<uint16_t>(bytecode::AccessFlag::Super)

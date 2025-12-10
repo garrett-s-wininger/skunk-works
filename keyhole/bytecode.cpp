@@ -103,10 +103,28 @@ bytecode::ClassFile::ClassFile(const std::filesystem::path& path) {
     }
 
     flags = read_multi_byte_value<uint16_t>(content_stream);
+    class_name_index = read_multi_byte_value<uint16_t>(content_stream);
 }
 
 auto bytecode::ClassFile::access_flags() const -> uint16_t {
     return flags;
+}
+
+// NOTE(garrett): This function could generally just get removed, but, the
+// long and double constant pool entries require an additional index
+// bump, per the JVMLS
+auto bytecode::ClassFile::get_constant_pool_entry(uint16_t requested) const -> const ConstantPoolEntry& {
+    auto index = 1uz;
+
+    for (auto i = 0uz; i < constant_pool.size(); ++i, ++index) {
+        if (index == requested) {
+            return constant_pool[i];
+        }
+    }
+
+    throw std::runtime_error(
+        std::format("Constant pool index {} out of range", index)
+    );
 }
 
 auto bytecode::ClassFile::constant_pool_entries() const -> std::span<const ConstantPoolEntry> {
@@ -119,4 +137,26 @@ auto bytecode::ClassFile::major_version() const -> uint16_t {
 
 auto bytecode::ClassFile::minor_version() const -> uint16_t {
     return version.minor_version;
+}
+
+auto bytecode::ClassFile::name() const -> std::string {
+    const auto class_entry = get_constant_pool_entry(class_name_index);
+
+    if (!std::holds_alternative<ConstantPoolClass>(class_entry)) {
+        throw std::runtime_error(
+            "Constant pool entry for class name points to non-class entry"
+        );
+    }
+;
+    const auto name_entry = get_constant_pool_entry(
+        std::get<ConstantPoolClass>(class_entry).name_index
+    );
+
+    if (!std::holds_alternative<ConstantPoolUTF8>(name_entry)) {
+        throw std::runtime_error(
+            "Constant pool class entry for class name points to non-UTF8 entry"
+        );
+    }
+
+    return std::get<ConstantPoolUTF8>(name_entry).text;
 }

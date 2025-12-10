@@ -109,12 +109,16 @@ private:
     ClassFileVersion version;
     std::vector<ConstantPoolEntry> constant_pool;
     uint16_t flags;
+    uint16_t class_name_index;
+
+    auto get_constant_pool_entry(uint16_t) const -> const ConstantPoolEntry&;
 public:
-    ClassFile(const std::filesystem::path& path);
+    ClassFile(const std::filesystem::path&);
     auto access_flags() const -> uint16_t;
     auto constant_pool_entries() const -> std::span<const ConstantPoolEntry>;
     auto major_version() const -> uint16_t;
     auto minor_version() const -> uint16_t;
+    auto name() const -> std::string;
 };
 
 }
