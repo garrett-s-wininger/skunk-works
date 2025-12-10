@@ -92,6 +92,12 @@ auto main(int argc, char** argv) -> int {
                 std::println("  {}", class_file.method_name(method));
             }
         }
+
+        const auto attributes = class_file.attribute_entries();
+
+        if (attributes.size() > 0) {
+            std::println("Assigned Attributes: {}", attributes.size());
+        }
     } catch (const std::runtime_error& e) {
         logging::error(e.what());
         return EXIT_FAILURE;

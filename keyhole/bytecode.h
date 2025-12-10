@@ -105,8 +105,13 @@ auto make_constant_pool_entry(ConstantPoolTag, std::ifstream&) -> ConstantPoolEn
 // TODO(garrett): Actual data members
 struct CodeAttribute {};
 
+struct SourceFileAttribute {
+    uint16_t sourcefile_index;
+};
+
 using Attribute = std::variant<
-    CodeAttribute
+    CodeAttribute,
+    SourceFileAttribute
 >;
 
 struct MethodInfo {
@@ -126,13 +131,18 @@ private:
     uint16_t class_name_index;
     uint16_t super_class_name_index;
     std::vector<MethodInfo> methods;
+    std::vector<Attribute> attributes;
 
     auto get_constant_pool_entry(uint16_t) const -> const ConstantPoolEntry&;
     auto get_name_of_class_entry(const ConstantPoolClass) const -> std::string;
+    auto parse_attributes(std::ifstream&) const -> std::vector<Attribute>;
+    auto parse_constant_pool(std::ifstream&) -> void;
+    auto parse_methods(std::ifstream&) -> void;
 public:
     ClassFile(const std::filesystem::path&);
 
     auto access_flags() const -> uint16_t;
+    auto attribute_entries() const -> std::span<const Attribute>;
     auto constant_pool_entries() const -> std::span<const ConstantPoolEntry>;
     auto major_version() const -> uint16_t;
     auto method_entries() const -> std::span<const MethodInfo>;
