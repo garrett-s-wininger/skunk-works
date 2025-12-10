@@ -101,8 +101,13 @@ bytecode::ClassFile::ClassFile(const std::filesystem::path& path) {
             )
         );
     }
+
+    flags = read_multi_byte_value<uint16_t>(content_stream);
 }
 
+auto bytecode::ClassFile::access_flags() const -> uint16_t {
+    return flags;
+}
 
 auto bytecode::ClassFile::constant_pool_entries() const -> std::span<const ConstantPoolEntry> {
     return constant_pool;

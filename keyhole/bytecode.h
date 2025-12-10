@@ -43,6 +43,18 @@ constexpr auto jdk_version(const uint16_t bytecode_major_version) -> uint8_t {
     return bytecode_major_version - 44;
 }
 
+enum class AccessFlag : uint16_t {
+    Public = 0x0001,
+    Final = 0x0010,
+    Super = 0x0020,
+    Interface = 0x0200,
+    Abstract = 0x0400,
+    Synthetic = 0x1000,
+    Annotation = 0x2000,
+    Enum = 0x4000,
+    Module = 0x8000
+};
+
 struct ClassFileVersion {
     uint16_t major_version;
     uint16_t minor_version;
@@ -96,8 +108,10 @@ class ClassFile {
 private:
     ClassFileVersion version;
     std::vector<ConstantPoolEntry> constant_pool;
+    uint16_t flags;
 public:
     ClassFile(const std::filesystem::path& path);
+    auto access_flags() const -> uint16_t;
     auto constant_pool_entries() const -> std::span<const ConstantPoolEntry>;
     auto major_version() const -> uint16_t;
     auto minor_version() const -> uint16_t;

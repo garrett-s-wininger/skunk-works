@@ -47,13 +47,18 @@ auto main(int argc, char** argv) -> int {
         bytecode::ClassFile class_file{target};
         auto major = class_file.major_version();
 
-        std::println("ClassFile Version:");
+        std::println("Class File Overview:");
 
         std::println(
-            "  {}.{} (Java {})",
+            "  Version - {}.{} (Java {})",
             major,
             class_file.minor_version(),
             bytecode::jdk_version(major)
+        );
+
+        std::println(
+            "  Access Flags - 0x{:04X}",
+            class_file.access_flags() ^ static_cast<uint16_t>(bytecode::AccessFlag::Super)
         );
 
         const auto entries = class_file.constant_pool_entries();
