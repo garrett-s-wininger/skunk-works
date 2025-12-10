@@ -3,7 +3,9 @@
 
 #include "bytecode.h"
 
-auto bytecode::make_constant_pool_entry(ConstantPoolTag tag, std::ifstream& content_stream) -> ConstantPoolEntry {
+auto bytecode::make_constant_pool_entry(
+    ConstantPoolTag tag, std::ifstream& content_stream
+) -> ConstantPoolEntry {
     switch (tag) {
         case ConstantPoolTag::Class: {
             auto data = ConstantPoolClass{};
@@ -35,6 +37,21 @@ auto bytecode::make_constant_pool_entry(ConstantPoolTag tag, std::ifstream& cont
 
     throw std::logic_error("Exhausted tag implementations or fell through");
 }
+
+auto bytecode::make_attribute(
+    std::string_view type_name,
+    std::ifstream& content_stream
+) -> Attribute {
+    // TODO(garrett): Proper code attribute parsing, dynamic dispatch
+    if (type_name != "Code") {
+        throw std::runtime_error("Non-code attributes not supported");
+    }
+
+    auto length = read_multi_byte_value<uint32_t>(content_stream);
+    content_stream.ignore(length);
+
+    return CodeAttribute{};
+};
 
 bytecode::ClassFile::ClassFile(const std::filesystem::path& path) {
     const auto path_string = path.string();
@@ -105,6 +122,62 @@ bytecode::ClassFile::ClassFile(const std::filesystem::path& path) {
     flags = read_multi_byte_value<uint16_t>(content_stream);
     class_name_index = read_multi_byte_value<uint16_t>(content_stream);
     super_class_name_index = read_multi_byte_value<uint16_t>(content_stream);
+
+    const auto interface_count = read_multi_byte_value<uint16_t>(content_stream);
+
+    if (interface_count != 0) {
+        // TODO(garrett): Interface parsing
+        throw std::runtime_error("Interface parsing is not supported");
+    }
+
+    const auto field_count = read_multi_byte_value<uint16_t>(content_stream);
+
+    if (field_count != 0) {
+        // TODO(garrett): Field parsing
+        throw std::runtime_error("Field parsing is not supported");
+    }
+
+    const auto method_count = read_multi_byte_value<uint16_t>(content_stream);
+
+    methods = std::vector<MethodInfo>();
+    methods.reserve(method_count);
+
+    for (auto i = 0; i < method_count; ++i) {
+        auto method = MethodInfo{};
+
+        method.access_flags = read_multi_byte_value<uint16_t>(content_stream);
+        method.name_index = read_multi_byte_value<uint16_t>(content_stream);
+        method.descriptor_index = read_multi_byte_value<uint16_t>(content_stream);
+
+        const auto attribute_count = read_multi_byte_value<uint16_t>(content_stream);
+
+        auto attributes = std::vector<Attribute>();
+        attributes.reserve(attribute_count);
+
+        for (auto i = 0; i < attribute_count; ++i) {
+            const auto entry = get_constant_pool_entry(
+                read_multi_byte_value<uint16_t>(content_stream)
+            );
+
+            if (!std::holds_alternative<ConstantPoolUTF8>(entry)) {
+                throw std::runtime_error(
+                    "Attribute points to non-UTF8 entry for its type"
+                );
+            }
+
+            attributes.push_back(
+                make_attribute(
+                    std::get<ConstantPoolUTF8>(entry).text,
+                    content_stream
+                )
+            );
+        }
+
+        method.attributes = attributes;
+        methods.push_back(method);
+    }
+
+    // TODO(garrett): Class attribute parsing
 }
 
 auto bytecode::ClassFile::access_flags() const -> uint16_t {
@@ -146,6 +219,20 @@ auto bytecode::ClassFile::constant_pool_entries() const -> std::span<const Const
 
 auto bytecode::ClassFile::major_version() const -> uint16_t {
     return version.major_version;
+}
+
+auto bytecode::ClassFile::method_entries() const -> std::span<const MethodInfo> {
+    return methods;
+}
+
+auto bytecode::ClassFile::method_name(const MethodInfo method) const -> std::string {
+    const auto name_entry = get_constant_pool_entry(method.name_index);
+
+    if (!std::holds_alternative<ConstantPoolUTF8>(name_entry)) {
+        throw std::runtime_error("Method name entry points to non-UTF8 entry");
+    }
+
+    return std::get<ConstantPoolUTF8>(name_entry).text;
 }
 
 auto bytecode::ClassFile::minor_version() const -> uint16_t {

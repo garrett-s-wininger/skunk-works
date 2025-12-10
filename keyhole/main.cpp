@@ -82,6 +82,16 @@ auto main(int argc, char** argv) -> int {
                 }
             }
         }
+
+        const auto methods = class_file.method_entries();
+
+        if (methods.size() > 0) {
+            std::println("Available Methods:");
+
+            for (const auto& method : methods) {
+                std::println("  {}", class_file.method_name(method));
+            }
+        }
     } catch (const std::runtime_error& e) {
         logging::error(e.what());
         return EXIT_FAILURE;
