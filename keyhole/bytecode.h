@@ -110,8 +110,10 @@ private:
     std::vector<ConstantPoolEntry> constant_pool;
     uint16_t flags;
     uint16_t class_name_index;
+    uint16_t super_class_name_index;
 
     auto get_constant_pool_entry(uint16_t) const -> const ConstantPoolEntry&;
+    auto get_name_of_class_entry(const ConstantPoolClass) const -> std::string;
 public:
     ClassFile(const std::filesystem::path&);
     auto access_flags() const -> uint16_t;
@@ -119,6 +121,7 @@ public:
     auto major_version() const -> uint16_t;
     auto minor_version() const -> uint16_t;
     auto name() const -> std::string;
+    auto super_class() const -> std::string;
 };
 
 }

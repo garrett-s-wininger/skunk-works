@@ -104,6 +104,7 @@ bytecode::ClassFile::ClassFile(const std::filesystem::path& path) {
 
     flags = read_multi_byte_value<uint16_t>(content_stream);
     class_name_index = read_multi_byte_value<uint16_t>(content_stream);
+    super_class_name_index = read_multi_byte_value<uint16_t>(content_stream);
 }
 
 auto bytecode::ClassFile::access_flags() const -> uint16_t {
@@ -127,6 +128,18 @@ auto bytecode::ClassFile::get_constant_pool_entry(uint16_t requested) const -> c
     );
 }
 
+auto bytecode::ClassFile::get_name_of_class_entry(const ConstantPoolClass entry) const -> std::string {
+    const auto name_entry = get_constant_pool_entry(entry.name_index);
+
+    if (!std::holds_alternative<ConstantPoolUTF8>(name_entry)) {
+        throw std::runtime_error(
+            "Constant pool class entry for class name points to non-UTF8 entry"
+        );
+    }
+
+    return std::get<ConstantPoolUTF8>(name_entry).text;
+}
+
 auto bytecode::ClassFile::constant_pool_entries() const -> std::span<const ConstantPoolEntry> {
     return constant_pool;
 }
@@ -147,16 +160,18 @@ auto bytecode::ClassFile::name() const -> std::string {
             "Constant pool entry for class name points to non-class entry"
         );
     }
-;
-    const auto name_entry = get_constant_pool_entry(
-        std::get<ConstantPoolClass>(class_entry).name_index
-    );
 
-    if (!std::holds_alternative<ConstantPoolUTF8>(name_entry)) {
+    return get_name_of_class_entry(std::get<ConstantPoolClass>(class_entry));
+}
+
+auto bytecode::ClassFile::super_class() const -> std::string {
+    const auto class_entry = get_constant_pool_entry(super_class_name_index);
+
+    if (!std::holds_alternative<ConstantPoolClass>(class_entry)) {
         throw std::runtime_error(
-            "Constant pool class entry for class name points to non-UTF8 entry"
+            "Constant pool entry for super class name points to non-class entry"
         );
     }
 
-    return std::get<ConstantPoolUTF8>(name_entry).text;
+    return get_name_of_class_entry(std::get<ConstantPoolClass>(class_entry));
 }

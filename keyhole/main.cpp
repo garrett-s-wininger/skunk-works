@@ -48,7 +48,12 @@ auto main(int argc, char** argv) -> int {
         auto major = class_file.major_version();
 
         std::println("Class File Overview:");
-        std::println("  Name - {}", class_file.name());
+
+        std::println(
+            "  Name - {} ({})",
+            class_file.name(),
+            class_file.super_class()
+        );
 
         std::println(
             "  Version - {}.{} (Java {})",
