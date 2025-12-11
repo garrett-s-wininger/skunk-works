@@ -3,8 +3,19 @@ CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 
+# CTest
+CTestTestfile.cmake
+Testing/
+*_include.cmake
+*_tests.cmake
+
+# Dependencies
+_deps/
+lib/
+
 # Generators
 Makefile
 
 # Binary
 keyhole
+keyhole-test
