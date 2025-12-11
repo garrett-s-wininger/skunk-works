@@ -15,13 +15,4 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(googletest)
 
-add_executable(keyhole main.cpp bytecode.cpp logging.cpp)
-target_compile_features(keyhole PRIVATE cxx_std_23)
-target_compile_options(keyhole PRIVATE -Werror -Wall -Wextra -pedantic)
-
-add_executable(keyhole-test test.cpp)
-target_compile_features(keyhole-test PRIVATE cxx_std_23)
-target_compile_options(keyhole-test PRIVATE -Werror -Wall -Wextra -pedantic)
-target_link_libraries(keyhole-test GTest::gtest GTest::gtest_main)
-
-gtest_discover_tests(keyhole-test)
+add_subdirectory(cli)

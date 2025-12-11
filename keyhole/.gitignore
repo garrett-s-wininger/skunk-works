@@ -15,7 +15,3 @@ lib/
 
 # Generators
 Makefile
-
-# Binary
-keyhole
-keyhole-test
