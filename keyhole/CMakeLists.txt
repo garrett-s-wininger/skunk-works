@@ -15,4 +15,5 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(googletest)
 
+add_subdirectory(classfile)
 add_subdirectory(cli)
