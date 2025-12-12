@@ -1,5 +1,7 @@
 #include "classfile.h"
 
+classfile::FileSink::FileSink(std::ofstream& target) : target_(target) {}
+
 classfile::VectorSink::VectorSink() : buffer_(std::vector<std::byte>()) {}
 
 classfile::VectorSink::VectorSink(std::vector<std::byte>& buffer) noexcept

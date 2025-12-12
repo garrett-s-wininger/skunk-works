@@ -4,6 +4,8 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <span>
 #include <vector>
 
@@ -15,6 +17,22 @@ template <typename S>
 concept Sink = requires(S& sink, uint16_t u16, uint32_t u32) {
     { sink.write(u16) } -> std::same_as<void>;
     { sink.write(u32) } -> std::same_as<void>;
+};
+
+class FileSink {
+private:
+    std::ofstream& target_;
+public:
+    FileSink(std::ofstream&);
+
+    template <endian::MultiByteIntegral V>
+    auto write(V value) -> void {
+        auto bytes = std::bit_cast<std::array<std::byte, sizeof(V)>>(
+            endian::big(value)
+        );
+
+        target_.write(reinterpret_cast<char*>(bytes.data()), bytes.size());
+    }
 };
 
 class VectorSink {
