@@ -132,6 +132,29 @@ constexpr auto tag(const Entry entry) -> Tag {
     }, entry);
 }
 
+constexpr auto name(const Entry entry) -> std::string {
+    return std::visit([](const auto e) constexpr -> std::string {
+        using T = std::decay_t<decltype(e)>;
+
+        if constexpr (std::same_as<T, ClassEntry>) {
+            return "Class";
+        } else if constexpr (std::same_as<T, MethodReferenceEntry>) {
+            return "MethodReference";
+        } else if constexpr (std::same_as<T, NameAndTypeEntry>) {
+            return "NameAndType";
+        } else if constexpr (std::same_as<T, UTF8Entry>) {
+            return "UTF-8";
+        } else {
+            // NOTE(garrett): This will cause a compile failure if we forget an
+            // entry value.
+            static_assert(
+                always_false_v<T>,
+                "Unhandled CP entry for entry name"
+            );
+        }
+    }, entry);
+}
+
 auto write(sinks::Sink auto& sink, ClassEntry entry) -> void {
     sink.write(static_cast<uint8_t>(tag(entry)));
     sink.write(entry.name_index);

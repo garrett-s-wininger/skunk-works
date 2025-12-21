@@ -77,13 +77,13 @@ auto inspect_class_file(const std::filesystem::path& target) -> void {
     std::println("Class File Overview:");
 
     std::println(
-        "  Name - {} ({})",
+        "  Name         - {} ({})",
         klass.name(),
         klass.superclass()
     );
 
     std::println(
-        "  Version - {}.{} (Java {})",
+        "  Version      - {}.{} (Java {})",
         klass.version().major,
         klass.version().minor,
         jdk_version(klass.version())
@@ -97,13 +97,14 @@ auto inspect_class_file(const std::filesystem::path& target) -> void {
     const auto entries = klass.constant_pool.entries();
 
     if (entries.size() > 0) {
-        std::println("UTF-8 Constant Pool Entries:");
+        std::println("Constant Pool Entries:");
 
         for (auto i = 0uz; i < entries.size(); ++i) {
-            if (std::holds_alternative<constant_pool::UTF8Entry>(entries[i])) {
-                const auto data = std::get<constant_pool::UTF8Entry>(entries[i]);
-                std::println("  #{}: {}", i + 1, data.text);
-            }
+            std::println(
+                "  {:>2}#: [{}]",
+                i + 1,
+                constant_pool::name(entries[i])
+            );
         }
     }
 
@@ -121,7 +122,16 @@ auto inspect_class_file(const std::filesystem::path& target) -> void {
     }
 
     if (klass.attributes.size() > 0) {
-        std::println("Assigned Attributes: {}", klass.attributes.size());
+        std::println("Assigned Attributes:");
+
+        for (const auto& attribute : klass.attributes) {
+            std::println(
+                "  {}",
+                klass.constant_pool.resolve<constant_pool::UTF8Entry>(
+                    attribute.name_index
+                ).text
+            );
+        }
     }
 }
 
