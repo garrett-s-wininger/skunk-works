@@ -8,10 +8,7 @@
 
 #include "attribute.h"
 #include "constant_pool.h"
-#include "endian.h"
 #include "method.h"
-#include "parsing.h"
-#include "reader.h"
 #include "sinks.h"
 
 namespace classfile {
@@ -67,9 +64,6 @@ struct ClassFile {
         constant_pool.add(constant_pool::ClassEntry{3});
         superclass_index = 4;
     }
-
-    static auto parse(reader::Reader&) noexcept
-        -> std::expected<ClassFile, parsing::Error>;
 
     auto dump_contents(sinks::Sink auto& sink) const -> void {
         sink.write(static_cast<uint32_t>(0xCAFEBABE));

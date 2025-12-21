@@ -4,6 +4,7 @@
 #include <expected>
 
 #include "attribute.h"
+#include "classfile.h"
 #include "constant_pool.h"
 #include "method.h"
 #include "reader.h"
@@ -19,6 +20,9 @@ enum Error {
 
 auto parse_attribute(reader::Reader&) noexcept
         -> std::expected<attribute::Attribute, Error>;
+
+auto parse_class_file(reader::Reader&)
+        -> std::expected<classfile::ClassFile, Error>;
 
 auto parse_constant_pool(reader::Reader&, uint16_t count)
         -> std::expected<constant_pool::ConstantPool, Error>;

@@ -4,6 +4,7 @@
 
 #include "classfile.h"
 #include "logging.h"
+#include "parsing.h"
 #include "sinks.h"
 
 using namespace std::literals;
@@ -64,7 +65,7 @@ auto inspect_class_file(const std::filesystem::path& target) -> void {
     }
 
     reader::Reader reader{contents};
-    const auto class_file = classfile::ClassFile::parse(reader);
+    const auto class_file = parsing::parse_class_file(reader);
 
     if (!class_file) {
         throw std::runtime_error(
