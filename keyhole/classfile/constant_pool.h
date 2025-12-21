@@ -9,8 +9,6 @@
 #include <variant>
 #include <vector>
 
-#include "parsing.h"
-#include "reader.h"
 #include "sinks.h"
 
 namespace constant_pool {
@@ -65,12 +63,6 @@ public:
             }, entry);
         }
     }
-
-    static auto parse_entry(reader::Reader&) noexcept ->
-        std::expected<Entry, parsing::Error>;
-
-    static auto parse(reader::Reader&, uint16_t) noexcept ->
-        std::expected<ConstantPool, parsing::Error>;
 
     template <typename T>
     auto resolve(uint16_t index) const -> const T& {

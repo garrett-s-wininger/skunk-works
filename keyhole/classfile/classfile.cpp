@@ -40,7 +40,7 @@ auto classfile::ClassFile::parse(reader::Reader& reader) noexcept
     auto result = classfile::ClassFile{};
     result.version = classfile::Version{major, minor};
 
-    const auto pool = constant_pool::ConstantPool::parse(
+    const auto pool = parsing::parse_constant_pool(
         reader,
         // NOTE(garrett): Classfile contains the actual count, plus one
         header_reader.read_unchecked<uint16_t>() - 1
