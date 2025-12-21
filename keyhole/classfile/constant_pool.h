@@ -58,7 +58,7 @@ public:
 
     auto dump_contents(sinks::Sink auto& sink) const -> void {
         for (const auto& entry : entries_) {
-            std::visit([&sink, entry](const auto e){
+            std::visit([&sink](const auto& e){
                 write(sink, e);
             }, entry);
         }
