@@ -16,7 +16,7 @@ TEST(ClassFile, DetectsInvalidMagic) {
     const auto result = classfile::ClassFile::parse(reader);
 
     ASSERT_FALSE(result);
-    EXPECT_EQ(reader::ParseError::InvalidMagic, result.error());
+    EXPECT_EQ(parsing::Error::InvalidMagic, result.error());
 }
 
 TEST(ClassFile, DetectsTruncation) {
@@ -26,7 +26,7 @@ TEST(ClassFile, DetectsTruncation) {
     const auto result = classfile::ClassFile::parse(reader);
 
     ASSERT_FALSE(result);
-    EXPECT_EQ(reader::ParseError::Truncated, result.error());
+    EXPECT_EQ(parsing::Error::Truncated, result.error());
 }
 
 TEST(ClassFile, ParsesAppropriately) {
@@ -106,8 +106,8 @@ TEST(ClassFile, ParsesAppropriately) {
 
     const auto klass = result.value();
 
-    ASSERT_EQ(61u, klass.version().major);
-    ASSERT_EQ(0u, klass.version().minor);
+    ASSERT_EQ(61u, klass.version.major);
+    ASSERT_EQ(0u, klass.version.minor);
 
     const auto parsed_constant_pool = klass.constant_pool;
 

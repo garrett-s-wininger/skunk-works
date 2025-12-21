@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "parsing.h"
 #include "reader.h"
 #include "sinks.h"
 
@@ -66,10 +67,10 @@ public:
     }
 
     static auto parse_entry(reader::Reader&) noexcept ->
-        std::expected<Entry, reader::ParseError>;
+        std::expected<Entry, parsing::Error>;
 
     static auto parse(reader::Reader&, uint16_t) noexcept ->
-        std::expected<ConstantPool, reader::ParseError>;
+        std::expected<ConstantPool, parsing::Error>;
 
     template <typename T>
     auto resolve(uint16_t index) const -> const T& {

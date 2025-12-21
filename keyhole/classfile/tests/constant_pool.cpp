@@ -29,7 +29,7 @@ TEST(ConstantPool, DetectsInvalidTag) {
     ASSERT_FALSE(result);
 
     ASSERT_EQ(
-        reader::ParseError::InvalidConstantPoolTag,
+        parsing::Error::InvalidConstantPoolTag,
         result.error()
     );
 }

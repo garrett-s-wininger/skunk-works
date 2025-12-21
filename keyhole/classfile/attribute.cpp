@@ -1,7 +1,7 @@
 #include "attribute.h"
 
 auto attribute::Attribute::parse(reader::Reader& reader)
-        -> std::expected<attribute::Attribute, reader::ParseError> {
+        -> std::expected<attribute::Attribute, reader::Error> {
     const auto header = reader.read_bytes(sizeof(uint32_t) + sizeof(uint16_t));
 
     if (!header) {

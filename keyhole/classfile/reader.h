@@ -9,11 +9,8 @@
 
 namespace reader {
 
-enum ParseError {
-    InvalidMagic,
-    InvalidConstantPoolTag,
+enum Error {
     Truncated,
-    UnsupportedEntity
 };
 
 class Reader {
@@ -23,7 +20,7 @@ public:
     explicit Reader(std::span<const std::byte>) noexcept;
 
     auto read_bytes(uint32_t)
-        -> std::expected<std::span<const std::byte>, ParseError>;
+        -> std::expected<std::span<const std::byte>, Error>;
 
     template <endian::MultiByteIntegral V>
     auto read_unchecked() -> V {
@@ -35,9 +32,9 @@ public:
     }
 
     template <endian::MultiByteIntegral V>
-    auto read() -> std::expected<V, ParseError> {
+    auto read() -> std::expected<V, Error> {
         if (remaining_.size() < sizeof(V)) {
-            return std::unexpected(ParseError::Truncated);
+            return std::unexpected(Error::Truncated);
         }
 
         return read_unchecked<V>();

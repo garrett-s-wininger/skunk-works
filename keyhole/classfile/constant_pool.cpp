@@ -25,11 +25,11 @@ auto constant_pool::ConstantPool::entries() const -> const std::deque<Entry>& {
 }
 
 auto parse_class_info_entry(reader::Reader& reader) noexcept
-        -> std::expected<constant_pool::ClassEntry, reader::ParseError> {
+        -> std::expected<constant_pool::ClassEntry, parsing::Error> {
     const auto index = reader.read<uint16_t>();
 
     if (!index) {
-        return std::unexpected(index.error());
+        return std::unexpected(parsing::Error::Truncated);
     }
 
     return constant_pool::ClassEntry{index.value()};
@@ -38,11 +38,11 @@ auto parse_class_info_entry(reader::Reader& reader) noexcept
 // TODO(garrett): Perhaps collapse these (any maybe others) to a generic
 // x-bytes parse
 auto parse_method_reference_entry(reader::Reader& reader) noexcept
-        -> std::expected<constant_pool::MethodReferenceEntry, reader::ParseError> {
+        -> std::expected<constant_pool::MethodReferenceEntry, parsing::Error> {
     const auto entry_contents = reader.read_bytes(sizeof(uint32_t));
 
     if (!entry_contents) {
-        return std::unexpected(entry_contents.error());
+        return std::unexpected(parsing::Error::Truncated);
     }
 
     reader::Reader entry_reader{entry_contents.value()};
@@ -54,11 +54,11 @@ auto parse_method_reference_entry(reader::Reader& reader) noexcept
 }
 
 auto parse_name_and_type_entry(reader::Reader& reader) noexcept
-        -> std::expected<constant_pool::NameAndTypeEntry, reader::ParseError> {
+        -> std::expected<constant_pool::NameAndTypeEntry, parsing::Error> {
     const auto entry_contents = reader.read_bytes(sizeof(uint32_t));
 
     if (!entry_contents) {
-        return std::unexpected(entry_contents.error());
+        return std::unexpected(parsing::Error::Truncated);
     }
 
     reader::Reader entry_reader{entry_contents.value()};
@@ -70,18 +70,18 @@ auto parse_name_and_type_entry(reader::Reader& reader) noexcept
 }
 
 auto parse_utf8_entry(reader::Reader& reader) noexcept
-        -> std::expected<constant_pool::UTF8Entry, reader::ParseError> {
+        -> std::expected<constant_pool::UTF8Entry, parsing::Error> {
     auto entry = constant_pool::UTF8Entry{};
     const auto size = reader.read<uint16_t>();
 
     if (!size) {
-        return std::unexpected(size.error());
+        return std::unexpected(parsing::Error::Truncated);
     }
 
     const auto text_content = reader.read_bytes(size.value());
 
     if (!text_content) {
-        return std::unexpected(size.error());
+        return std::unexpected(parsing::Error::Truncated);
     }
 
     entry.text = std::string_view{
@@ -93,11 +93,11 @@ auto parse_utf8_entry(reader::Reader& reader) noexcept
 }
 
 auto constant_pool::ConstantPool::parse_entry(reader::Reader& reader) noexcept
-        -> std::expected<constant_pool::Entry, reader::ParseError> {
+        -> std::expected<constant_pool::Entry, parsing::Error> {
     const auto tag = reader.read<uint8_t>();
 
     if (!tag) {
-        return std::unexpected(tag.error());
+        return std::unexpected(parsing::Error::Truncated);
     }
 
     switch (static_cast<constant_pool::Tag>(tag.value())) {
@@ -114,19 +114,19 @@ auto constant_pool::ConstantPool::parse_entry(reader::Reader& reader) noexcept
             return parse_utf8_entry(reader);
         }
         default:
-            return std::unexpected(reader::ParseError::InvalidConstantPoolTag);
+            return std::unexpected(parsing::Error::InvalidConstantPoolTag);
     }
 }
 
 auto constant_pool::ConstantPool::parse(reader::Reader& reader, uint16_t count)
-        noexcept -> std::expected<constant_pool::ConstantPool, reader::ParseError> {
+        noexcept -> std::expected<constant_pool::ConstantPool, parsing::Error> {
     constant_pool::ConstantPool pool{};
 
     for (auto i = 0uz; i < count; ++i) {
         const auto entry = constant_pool::ConstantPool::parse_entry(reader);
 
         if (!entry) {
-            return std::unexpected(entry.error());
+            return std::unexpected(parsing::Error::Truncated);
         }
 
         pool.add(entry.value());

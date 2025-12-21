@@ -4,9 +4,9 @@ reader::Reader::Reader(std::span<const std::byte> bytes) noexcept
     : remaining_(bytes) {}
 
 auto reader::Reader::read_bytes(uint32_t count)
-        -> std::expected<std::span<const std::byte>, reader::ParseError> {
+        -> std::expected<std::span<const std::byte>, reader::Error> {
     if (remaining_.size() < count) {
-        return std::unexpected(reader::ParseError::Truncated);
+        return std::unexpected(reader::Error::Truncated);
     }
 
     const auto result = remaining_.first(count);

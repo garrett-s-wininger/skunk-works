@@ -1,11 +1,11 @@
 #include "method.h"
 
 auto method::Method::parse(reader::Reader& reader)
-        -> std::expected<method::Method, reader::ParseError> {
+        -> std::expected<method::Method, parsing::Error> {
     const auto method_header = reader.read_bytes(sizeof(uint64_t));
 
     if (!method_header) {
-        return std::unexpected(method_header.error());
+        return std::unexpected(parsing::Error::Truncated);
     }
 
     reader::Reader method_reader{method_header.value()};
@@ -21,7 +21,7 @@ auto method::Method::parse(reader::Reader& reader)
         const auto result = attribute::Attribute::parse(reader);
 
         if (!result) {
-            return std::unexpected(result.error());
+            return std::unexpected(parsing::Error::Truncated);
         }
 
         attributes.push_back(result.value());

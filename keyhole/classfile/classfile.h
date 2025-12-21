@@ -10,6 +10,7 @@
 #include "constant_pool.h"
 #include "endian.h"
 #include "method.h"
+#include "parsing.h"
 #include "reader.h"
 #include "sinks.h"
 
@@ -37,16 +38,16 @@ concept PersistentString =
     std::same_as<std::remove_reference_t<T>, const std::string> &&
     std::is_lvalue_reference_v<T&&>;
 
-class ClassFile {
-private:
-    Version version_;
-    uint16_t class_index_;
-    uint16_t superclass_index_;
+struct ClassFile {
+    Version version;
+    uint16_t class_index;
+    uint16_t superclass_index;
+    constant_pool::ConstantPool constant_pool;
+    uint16_t access_flags;
+    // TODO(garrett): Interface, field storage
+    std::vector<method::Method> methods;
+    std::vector<attribute::Attribute> attributes;
 
-    auto set_class_index(uint16_t) -> void;
-    auto set_superclass_index(uint16_t) -> void;
-    auto set_version(Version) -> void;
-public:
     ClassFile() noexcept;
 
     template <PersistentString S1, PersistentString S2>
@@ -57,35 +58,30 @@ public:
         );
 
         constant_pool.add(constant_pool::ClassEntry{1});
-        class_index_ = 2;
+        class_index = 2;
 
         constant_pool.add(
             constant_pool::UTF8Entry{superclass_name}
         );
 
         constant_pool.add(constant_pool::ClassEntry{3});
-        superclass_index_ = 4;
+        superclass_index = 4;
     }
 
-    constant_pool::ConstantPool constant_pool;
-    uint16_t access_flags;
-    std::vector<method::Method> methods;
-    std::vector<attribute::Attribute> attributes;
-
     static auto parse(reader::Reader&) noexcept
-        -> std::expected<ClassFile, reader::ParseError>;
+        -> std::expected<ClassFile, parsing::Error>;
 
     auto dump_contents(sinks::Sink auto& sink) const -> void {
         sink.write(static_cast<uint32_t>(0xCAFEBABE));
-        sink.write(static_cast<uint16_t>(version_.minor));
-        sink.write(static_cast<uint16_t>(version_.major));
+        sink.write(static_cast<uint16_t>(version.minor));
+        sink.write(static_cast<uint16_t>(version.major));
         sink.write(static_cast<uint16_t>(constant_pool.entries().size() + 1));
 
         constant_pool.dump_contents(sink);
 
         sink.write(static_cast<uint16_t>(access_flags));
-        sink.write(static_cast<uint16_t>(class_index_));
-        sink.write(static_cast<uint16_t>(superclass_index_));
+        sink.write(static_cast<uint16_t>(class_index));
+        sink.write(static_cast<uint16_t>(superclass_index));
 
         // TODO(garrett): Write interface entries
         sink.write(static_cast<uint16_t>(0x0000));
@@ -102,7 +98,6 @@ public:
 
     auto name() const -> std::string_view;
     auto superclass() const -> std::string_view;
-    auto version() const noexcept -> Version;
 };
 
 }

@@ -84,9 +84,9 @@ auto inspect_class_file(const std::filesystem::path& target) -> void {
 
     std::println(
         "  Version      - {}.{} (Java {})",
-        klass.version().major,
-        klass.version().minor,
-        jdk_version(klass.version())
+        klass.version.major,
+        klass.version.minor,
+        jdk_version(klass.version)
     );
 
     std::println(

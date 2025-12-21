@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "attribute.h"
+#include "parsing.h"
 #include "reader.h"
 
 namespace method {
@@ -30,7 +31,7 @@ struct Method {
     std::vector<attribute::Attribute> attributes;
 
     static auto parse(reader::Reader&)
-        -> std::expected<Method, reader::ParseError>;
+        -> std::expected<Method, parsing::Error>;
 };
 
 }

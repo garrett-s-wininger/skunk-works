@@ -12,7 +12,7 @@ struct Attribute {
     std::span<const std::byte> data;
 
     static auto parse(reader::Reader&)
-        -> std::expected<Attribute, reader::ParseError>;
+        -> std::expected<Attribute, reader::Error>;
 };
 
 }

@@ -1,9 +1,9 @@
 #include "classfile.h"
 
 classfile::ClassFile::ClassFile() noexcept
-    : version_{classfile::Version{55u, 0u}}
-    , class_index_{0u}
-    , superclass_index_{0u}
+    : version{classfile::Version{55u, 0u}}
+    , class_index{0u}
+    , superclass_index{0u}
     // NOTE(garrett): Public members after here
     , constant_pool(constant_pool::ConstantPool{})
     , access_flags(0x0021)
@@ -12,7 +12,7 @@ classfile::ClassFile::ClassFile() noexcept
 
 auto classfile::ClassFile::name() const -> std::string_view {
     const auto& class_entry = constant_pool.resolve<constant_pool::ClassEntry>(
-        class_index_
+        class_index
     );
 
     return constant_pool.resolve<constant_pool::UTF8Entry>(
@@ -21,24 +21,24 @@ auto classfile::ClassFile::name() const -> std::string_view {
 }
 
 auto classfile::ClassFile::parse(reader::Reader& reader) noexcept
-        -> std::expected<ClassFile, reader::ParseError> {
+        -> std::expected<ClassFile, parsing::Error> {
     const auto header = reader.read_bytes(sizeof(uint64_t) + sizeof(uint16_t));
 
     if (!header) {
-        return std::unexpected(header.error());
+        return std::unexpected(parsing::Truncated);
     }
 
     auto header_reader = reader::Reader{header.value()};
 
     if (header_reader.read_unchecked<uint32_t>() != 0xCAFEBABE) {
-        return std::unexpected(reader::ParseError::InvalidMagic);
+        return std::unexpected(parsing::Error::InvalidMagic);
     }
 
     const auto minor = header_reader.read_unchecked<uint16_t>();
     const auto major = header_reader.read_unchecked<uint16_t>();
 
     auto result = classfile::ClassFile{};
-    result.set_version(classfile::Version{major, minor});
+    result.version = classfile::Version{major, minor};
 
     const auto pool = constant_pool::ConstantPool::parse(
         reader,
@@ -47,7 +47,7 @@ auto classfile::ClassFile::parse(reader::Reader& reader) noexcept
     );
 
     if (!pool) {
-        return std::unexpected(pool.error());
+        return std::unexpected(parsing::Error::Truncated);
     }
 
     result.constant_pool = pool.value();
@@ -55,43 +55,44 @@ auto classfile::ClassFile::parse(reader::Reader& reader) noexcept
     const auto access_and_class_metadata = reader.read_bytes(sizeof(uint64_t));
 
     if (!access_and_class_metadata) {
-        return std::unexpected(access_and_class_metadata.error());
+        return std::unexpected(parsing::Error::Truncated);
     }
 
     auto metadata_reader = reader::Reader{access_and_class_metadata.value()};
     result.access_flags = metadata_reader.read_unchecked<uint16_t>();
-    result.set_class_index(metadata_reader.read_unchecked<uint16_t>());
-    result.set_superclass_index(metadata_reader.read_unchecked<uint16_t>());
+    result.class_index = metadata_reader.read_unchecked<uint16_t>();
+    result.superclass_index = metadata_reader.read_unchecked<uint16_t>();
 
     const auto interface_count = metadata_reader.read_unchecked<uint16_t>();
 
     // TODO(garrett): Interface parsing
     if (interface_count > 0) {
-        return std::unexpected(reader::ParseError::UnsupportedEntity);
+        return std::unexpected(parsing::Error::NotImplemented);
     }
 
     const auto fields_count = reader.read<uint16_t>();
 
     // TODO(garrett): Field parsing
     if (!fields_count) {
-        return std::unexpected(fields_count.error());
+        return std::unexpected(parsing::Error::Truncated);
     } else if (fields_count.value() > 0) {
-        return std::unexpected(reader::ParseError::UnsupportedEntity);
+        return std::unexpected(parsing::Error::NotImplemented);
     }
 
     const auto methods_count = reader.read<uint16_t>();
 
     if (!methods_count) {
-        return std::unexpected(methods_count.error());
+        return std::unexpected(parsing::Error::Truncated);
     }
 
     result.methods = std::vector<method::Method>{};
+    result.methods.reserve(methods_count.value());
 
     for (auto i = 0u; i < methods_count.value(); ++i) {
         const auto method = method::Method::parse(reader);
 
         if (!method) {
-            return std::unexpected(method.error());
+            return std::unexpected(parsing::Error::Truncated);
         }
 
         result.methods.push_back(method.value());
@@ -100,7 +101,7 @@ auto classfile::ClassFile::parse(reader::Reader& reader) noexcept
     const auto attributes_count = reader.read<uint16_t>();
 
     if (!attributes_count) {
-        return std::unexpected(attributes_count.error());
+        return std::unexpected(parsing::Error::Truncated);
     }
 
     result.attributes = std::vector<attribute::Attribute>{};
@@ -109,7 +110,7 @@ auto classfile::ClassFile::parse(reader::Reader& reader) noexcept
         const auto attribute = attribute::Attribute::parse(reader);
 
         if (!attribute) {
-            return std::unexpected(attribute.error());
+            return std::unexpected(parsing::Error::Truncated);
         }
 
         result.attributes.push_back(attribute.value());
@@ -118,28 +119,12 @@ auto classfile::ClassFile::parse(reader::Reader& reader) noexcept
     return result;
 }
 
-auto classfile::ClassFile::set_class_index(uint16_t index) -> void {
-    class_index_ = index;
-}
-
-auto classfile::ClassFile::set_superclass_index(uint16_t index) -> void {
-    superclass_index_ = index;
-}
-
-auto classfile::ClassFile::set_version(classfile::Version version) -> void {
-    version_ = version;
-}
-
 auto classfile::ClassFile::superclass() const -> std::string_view {
     const auto& class_entry = constant_pool.resolve<constant_pool::ClassEntry>(
-        superclass_index_
+        superclass_index
     );
 
     return constant_pool.resolve<constant_pool::UTF8Entry>(
         class_entry.name_index
     ).text;
-}
-
-auto classfile::ClassFile::version() const noexcept -> classfile::Version {
-    return version_;
 }
