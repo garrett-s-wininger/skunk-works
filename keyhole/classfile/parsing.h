@@ -3,6 +3,7 @@
 
 #include <expected>
 
+#include "attribute.h"
 #include "method.h"
 #include "reader.h"
 
@@ -15,6 +16,7 @@ enum Error {
     Truncated
 };
 
+auto parse_attribute(reader::Reader&) -> std::expected<attribute::Attribute, Error>;
 auto parse_method(reader::Reader&) -> std::expected<method::Method, Error>;
 
 }

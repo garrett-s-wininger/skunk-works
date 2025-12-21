@@ -107,7 +107,7 @@ auto classfile::ClassFile::parse(reader::Reader& reader) noexcept
     result.attributes = std::vector<attribute::Attribute>{};
 
     for (auto i = 0uz; i < attributes_count.value(); ++i) {
-        const auto attribute = attribute::Attribute::parse(reader);
+        const auto attribute = parsing::parse_attribute(reader);
 
         if (!attribute) {
             return std::unexpected(parsing::Error::Truncated);

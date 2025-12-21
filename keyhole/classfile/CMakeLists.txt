@@ -3,7 +3,6 @@ project(kh-classfile)
 add_library(
     kh-classfile
     SHARED
-    attribute.cpp
     classfile.cpp
     constant_pool.cpp
     parsing.cpp
@@ -16,7 +15,6 @@ target_include_directories(kh-classfile PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_executable(
     kh-classfile-test
-    tests/attribute.cpp
     tests/classfile.cpp
     tests/constant_pool.cpp
     tests/parsing.cpp)
