@@ -17,7 +17,8 @@ add_executable(
     kh-classfile-test
     tests/classfile.cpp
     tests/constant_pool.cpp
-    tests/parsing.cpp)
+    tests/parsing.cpp
+    tests/serialization.cpp)
 
 target_compile_features(kh-classfile-test PRIVATE cxx_std_23)
 target_compile_options(kh-classfile-test PRIVATE -Werror -Wall -Wextra -pedantic)
