@@ -36,8 +36,7 @@ struct NameAndTypeEntry {
 };
 
 struct UTF8Entry {
-    // NOTE(garrett): Going for simplicity, this is NOT proper unicode handling
-    std::string text;
+    std::string_view text;
 };
 
 using Entry = std::variant<

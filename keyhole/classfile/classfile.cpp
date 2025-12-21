@@ -10,23 +10,6 @@ classfile::ClassFile::ClassFile() noexcept
     , methods(std::vector<method::Method>{})
     , attributes(std::vector<attribute::Attribute>{}) {}
 
-classfile::ClassFile::ClassFile(std::string_view class_name)
-        : classfile::ClassFile::ClassFile() {
-    constant_pool.add(
-        constant_pool::UTF8Entry{std::string{class_name}}
-    );
-
-    constant_pool.add(constant_pool::ClassEntry{1});
-    class_index_ = 2;
-
-    constant_pool.add(
-        constant_pool::UTF8Entry{std::string{"java/lang/Object"}}
-    );
-
-    constant_pool.add(constant_pool::ClassEntry{3});
-    superclass_index_ = 4;
-}
-
 auto classfile::ClassFile::name() const -> std::string_view {
     const auto& class_entry = constant_pool.resolve<constant_pool::ClassEntry>(
         class_index_

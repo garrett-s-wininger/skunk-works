@@ -136,7 +136,10 @@ auto inspect_class_file(const std::filesystem::path& target) -> void {
 }
 
 auto write_test_class_file(const std::filesystem::path& target) -> void {
-    classfile::ClassFile klass{"MyClass"sv};
+    const std::string class_name{"MyClass"};
+    const std::string superclass_name{"java/lang/Object"};
+    classfile::ClassFile klass(class_name, superclass_name);
+
     std::ofstream stream{target};
 
     if (!stream) {

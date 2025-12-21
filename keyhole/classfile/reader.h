@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <expected>
 #include <span>
-#include <vector>
 
 #include "endian.h"
 

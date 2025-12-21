@@ -32,6 +32,11 @@ enum class AccessFlags : uint16_t {
     ACC_MODULE = 0x8000
 };
 
+template <typename T>
+concept PersistentString =
+    std::same_as<std::remove_reference_t<T>, const std::string> &&
+    std::is_lvalue_reference_v<T&&>;
+
 class ClassFile {
 private:
     Version version_;
@@ -43,7 +48,24 @@ private:
     auto set_version(Version) -> void;
 public:
     ClassFile() noexcept;
-    ClassFile(std::string_view);
+
+    template <PersistentString S1, PersistentString S2>
+    ClassFile(S1&& class_name, S2&& superclass_name)
+            : ClassFile() {
+        constant_pool.add(
+            constant_pool::UTF8Entry{class_name}
+        );
+
+        constant_pool.add(constant_pool::ClassEntry{1});
+        class_index_ = 2;
+
+        constant_pool.add(
+            constant_pool::UTF8Entry{superclass_name}
+        );
+
+        constant_pool.add(constant_pool::ClassEntry{3});
+        superclass_index_ = 4;
+    }
 
     constant_pool::ConstantPool constant_pool;
     uint16_t access_flags;

@@ -1,6 +1,8 @@
 #ifndef METHOD_H
 #define METHOD_H
 
+#include <vector>
+
 #include "attribute.h"
 #include "reader.h"
 

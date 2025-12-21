@@ -19,12 +19,8 @@ auto attribute::Attribute::parse(reader::Reader& reader)
         return std::unexpected(header.error());
     }
 
-    attribute::Attribute attribute{};
-
-    attribute.name_index = name_index;
-    attribute.data.resize(body_size);
-
-    std::copy_n(body.value().data(), body_size, attribute.data.begin());
-
-    return attribute;
+    return attribute::Attribute{
+        name_index,
+        body.value()
+    };
 }

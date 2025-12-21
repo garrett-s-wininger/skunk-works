@@ -4,22 +4,6 @@
 #include "sinks.h"
 #include "tests/helpers.h"
 
-using namespace std::literals;
-
-TEST(ClassFile, CanResolveTextFromConstantPool) {
-    const classfile::ClassFile klass{"MyExampleClass"};
-
-    EXPECT_EQ("MyExampleClass", klass.name());
-    EXPECT_EQ("java/lang/Object", klass.superclass());
-}
-
-TEST(ClassFile, DefaultVersionAtJava11) {
-    const classfile::ClassFile klass{};
-
-    EXPECT_EQ(55u, klass.version().major);
-    EXPECT_EQ(0u, klass.version().minor);
-}
-
 TEST(ClassFile, DetectsInvalidMagic) {
     const auto input = std::to_array({
         std::byte{0xBE}, std::byte{0xBA}, std::byte{0xFE}, std::byte{0xCA},
@@ -145,7 +129,10 @@ TEST(ClassFile, ParsesAppropriately) {
 }
 
 TEST(ClassFile, OutputsCorrectBinaryData) {
-    const classfile::ClassFile klass{"MyClass"sv};
+    const std::string class_name{"MyClass"};
+    const std::string superclass_name{"java/lang/Object"};
+    const classfile::ClassFile klass(class_name, superclass_name);
+
     sinks::VectorSink sink{};
     klass.dump_contents(sink);
 

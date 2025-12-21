@@ -84,7 +84,7 @@ auto parse_utf8_entry(reader::Reader& reader) noexcept
         return std::unexpected(size.error());
     }
 
-    entry.text = std::string{
+    entry.text = std::string_view{
         reinterpret_cast<const char*>(text_content.value().data()),
         size.value()
     };
