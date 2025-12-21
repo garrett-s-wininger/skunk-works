@@ -1,8 +1,8 @@
 #include "gtest/gtest.h"
 
-#include "method.h"
+#include "parsing.h"
 
-TEST(Method, ParsesAppropriately) {
+TEST(Parsing, ParsesMethod) {
     constexpr auto input = std::array<const std::byte, 15>{
         // Access
         std::byte{0x00}, std::byte{0x11},
@@ -22,7 +22,7 @@ TEST(Method, ParsesAppropriately) {
 
     reader::Reader reader{input};
 
-    const auto result = method::Method::parse(reader);
+    const auto result = parsing::parse_method(reader);
 
     ASSERT_TRUE(result);
     const auto method = result.value();

@@ -6,7 +6,7 @@ add_library(
     attribute.cpp
     classfile.cpp
     constant_pool.cpp
-    method.cpp
+    parsing.cpp
     reader.cpp
     sinks.cpp)
 
@@ -19,7 +19,7 @@ add_executable(
     tests/attribute.cpp
     tests/classfile.cpp
     tests/constant_pool.cpp
-    tests/method.cpp)
+    tests/parsing.cpp)
 
 target_compile_features(kh-classfile-test PRIVATE cxx_std_23)
 target_compile_options(kh-classfile-test PRIVATE -Werror -Wall -Wextra -pedantic)

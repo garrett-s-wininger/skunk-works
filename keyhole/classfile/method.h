@@ -4,8 +4,6 @@
 #include <vector>
 
 #include "attribute.h"
-#include "parsing.h"
-#include "reader.h"
 
 namespace method {
 
@@ -29,9 +27,6 @@ struct Method {
     uint16_t name_index;
     uint16_t descriptor_index;
     std::vector<attribute::Attribute> attributes;
-
-    static auto parse(reader::Reader&)
-        -> std::expected<Method, parsing::Error>;
 };
 
 }

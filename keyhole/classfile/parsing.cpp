@@ -1,6 +1,6 @@
-#include "method.h"
+#include "parsing.h"
 
-auto method::Method::parse(reader::Reader& reader)
+auto parsing::parse_method(reader::Reader& reader)
         -> std::expected<method::Method, parsing::Error> {
     const auto method_header = reader.read_bytes(sizeof(uint64_t));
 

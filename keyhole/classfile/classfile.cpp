@@ -89,7 +89,7 @@ auto classfile::ClassFile::parse(reader::Reader& reader) noexcept
     result.methods.reserve(methods_count.value());
 
     for (auto i = 0u; i < methods_count.value(); ++i) {
-        const auto method = method::Method::parse(reader);
+        const auto method = parsing::parse_method(reader);
 
         if (!method) {
             return std::unexpected(parsing::Error::Truncated);
