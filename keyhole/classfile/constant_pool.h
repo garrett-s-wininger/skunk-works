@@ -5,11 +5,10 @@
 #include <format>
 #include <initializer_list>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <variant>
 #include <vector>
-
-#include "sinks.h"
 
 namespace constant_pool {
 
@@ -55,14 +54,6 @@ public:
 
     auto add(const Entry entry) -> void;
     auto entries() const -> const std::deque<Entry>&;
-
-    auto dump_contents(sinks::Sink auto& sink) const -> void {
-        for (const auto& entry : entries_) {
-            std::visit([&sink](const auto& e){
-                write(sink, e);
-            }, entry);
-        }
-    }
 
     template <typename T>
     auto resolve(uint16_t index) const -> const T& {
@@ -145,32 +136,6 @@ constexpr auto name(const Entry entry) -> std::string {
             );
         }
     }, entry);
-}
-
-auto write(sinks::Sink auto& sink, ClassEntry entry) -> void {
-    sink.write(static_cast<uint8_t>(tag(entry)));
-    sink.write(entry.name_index);
-}
-
-auto write(sinks::Sink auto& sink, MethodReferenceEntry entry) -> void {
-    sink.write(static_cast<uint8_t>(tag(entry)));
-    sink.write(entry.class_index);
-    sink.write(entry.name_and_type_index);
-}
-
-auto write(sinks::Sink auto& sink, NameAndTypeEntry entry) -> void {
-    sink.write(static_cast<uint8_t>(tag(entry)));
-    sink.write(entry.name_index);
-    sink.write(entry.descriptor_index);
-}
-
-auto write(sinks::Sink auto& sink, UTF8Entry entry) -> void {
-    sink.write(static_cast<uint8_t>(tag(entry)));
-    sink.write(static_cast<uint16_t>(entry.text.size()));
-
-    for (const auto byte : entry.text) {
-        sink.write(static_cast<uint8_t>(byte));
-    }
 }
 
 }

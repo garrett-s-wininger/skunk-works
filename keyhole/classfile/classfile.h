@@ -9,6 +9,7 @@
 #include "attribute.h"
 #include "constant_pool.h"
 #include "method.h"
+#include "serialization.h"
 #include "sinks.h"
 
 namespace classfile {
@@ -71,7 +72,7 @@ struct ClassFile {
         sink.write(static_cast<uint16_t>(version.major));
         sink.write(static_cast<uint16_t>(constant_pool.entries().size() + 1));
 
-        constant_pool.dump_contents(sink);
+        serialization::serialize(sink, constant_pool);
 
         sink.write(static_cast<uint16_t>(access_flags));
         sink.write(static_cast<uint16_t>(class_index));
