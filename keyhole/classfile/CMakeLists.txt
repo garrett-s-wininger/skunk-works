@@ -15,7 +15,6 @@ target_include_directories(kh-classfile PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_executable(
     kh-classfile-test
-    tests/classfile.cpp
     tests/constant_pool.cpp
     tests/parsing.cpp
     tests/serialization.cpp)

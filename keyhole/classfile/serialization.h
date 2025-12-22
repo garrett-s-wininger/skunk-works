@@ -2,6 +2,7 @@
 #define SERIALIZATION_H
 
 #include "attribute.h"
+#include "classfile.h"
 #include "constant_pool.h"
 #include "method.h"
 #include "sinks.h"
@@ -61,6 +62,31 @@ auto serialize(sinks::Sink auto& sink, const constant_pool::ConstantPool& pool)
             serialize(sink, e);
         }, entry);
     }
+}
+
+auto serialize(sinks::Sink auto& sink, const classfile::ClassFile& klass) -> void {
+    sink.write(static_cast<uint32_t>(0xCAFEBABE));
+    sink.write(static_cast<uint16_t>(klass.version.minor));
+    sink.write(static_cast<uint16_t>(klass.version.major));
+    sink.write(static_cast<uint16_t>(klass.constant_pool.entries().size() + 1));
+
+    serialization::serialize(sink, klass.constant_pool);
+
+    sink.write(static_cast<uint16_t>(klass.access_flags));
+    sink.write(static_cast<uint16_t>(klass.class_index));
+    sink.write(static_cast<uint16_t>(klass.superclass_index));
+
+    // TODO(garrett): Write interface entries
+    sink.write(static_cast<uint16_t>(0x0000));
+
+    // TODO(garrett): Write field entries
+    sink.write(static_cast<uint16_t>(0x0000));
+
+    sink.write(static_cast<uint16_t>(klass.methods.size()));
+    // TODO(garrett): Write method entries
+
+    sink.write(static_cast<uint16_t>(klass.attributes.size()));
+    // TODO(garrett): Write attribute entries
 }
 
 }

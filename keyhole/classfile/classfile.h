@@ -9,8 +9,6 @@
 #include "attribute.h"
 #include "constant_pool.h"
 #include "method.h"
-#include "serialization.h"
-#include "sinks.h"
 
 namespace classfile {
 
@@ -64,31 +62,6 @@ struct ClassFile {
 
         constant_pool.add(constant_pool::ClassEntry{3});
         superclass_index = 4;
-    }
-
-    auto dump_contents(sinks::Sink auto& sink) const -> void {
-        sink.write(static_cast<uint32_t>(0xCAFEBABE));
-        sink.write(static_cast<uint16_t>(version.minor));
-        sink.write(static_cast<uint16_t>(version.major));
-        sink.write(static_cast<uint16_t>(constant_pool.entries().size() + 1));
-
-        serialization::serialize(sink, constant_pool);
-
-        sink.write(static_cast<uint16_t>(access_flags));
-        sink.write(static_cast<uint16_t>(class_index));
-        sink.write(static_cast<uint16_t>(superclass_index));
-
-        // TODO(garrett): Write interface entries
-        sink.write(static_cast<uint16_t>(0x0000));
-
-        // TODO(garrett): Write field entries
-        sink.write(static_cast<uint16_t>(0x0000));
-
-        sink.write(static_cast<uint16_t>(methods.size()));
-        // TODO(garrett): Write method entries
-
-        sink.write(static_cast<uint16_t>(attributes.size()));
-        // TODO(garrett): Write attribute entries
     }
 
     auto name() const -> std::string_view;

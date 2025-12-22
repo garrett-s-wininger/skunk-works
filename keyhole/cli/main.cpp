@@ -1,11 +1,9 @@
 #include <filesystem>
 #include <print>
-#include <span>
 
-#include "classfile.h"
 #include "logging.h"
 #include "parsing.h"
-#include "sinks.h"
+#include "serialization.h"
 
 using namespace std::literals;
 
@@ -148,7 +146,7 @@ auto write_test_class_file(const std::filesystem::path& target) -> void {
     }
 
     sinks::FileSink sink{stream};
-    klass.dump_contents(sink);
+    serialization::serialize(sink, klass);
 }
 
 auto main(int argc, char** argv) -> int {
