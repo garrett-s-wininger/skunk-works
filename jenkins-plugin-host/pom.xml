@@ -1,24 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0">
-    <modelVersion>4.0.0</modelVersion>
+  <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.github.garrettswininger</groupId>
-    <artifactId>plugin-host-umbrella</artifactId>
-    <version>0.1.0-dev</version>
+  <groupId>io.github.garrettswininger</groupId>
+  <artifactId>plugin-host-umbrella</artifactId>
+  <version>0.1.0-dev</version>
+  <packaging>pom</packaging>
 
-    <licenses>
-        <license>
-            <name>MIT License</name>
-            <url>https://opensource.org/licenses/MIT</url>
-        </license>
-    </licenses>
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
+    </license>
+  </licenses>
 
-    <modules>
-        <module>common-build</module>
-        <module>example</module>
-        <module>host</module>
-        <module>hosted-plugin-api</module>
-    </modules>
-
-    <packaging>pom</packaging>
+  <modules>
+    <module>common-build</module>
+    <module>example</module>
+    <module>host</module>
+    <module>hosted-plugin-api</module>
+  </modules>
 </project>
