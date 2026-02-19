@@ -1,10 +1,16 @@
 package io.github.garrettswininger.pluginhost;
 
+import hudson.ExtensionComponent;
+import hudson.ExtensionList;
 import hudson.ExtensionPoint;
+import hudson.model.Describable;
+import hudson.model.Descriptor;
 import io.github.garrettswininger.hosting.DynamicPlugin;
 import io.github.garrettswininger.hosting.Hosted;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -16,9 +22,12 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.logging.Logger;
@@ -36,6 +45,11 @@ class AutoloadRegistry {
 
   AutoloadRegistry() {
     this.registrations = new HashMap<>();
+  }
+
+  private boolean isSupportedExtensionType(Class<? extends ExtensionPoint> extensionType) {
+    return !Descriptor.class.isAssignableFrom(extensionType)
+        && !Describable.class.isAssignableFrom(extensionType);
   }
 
   private byte[] calculateDigest(Path path) {
@@ -142,6 +156,15 @@ class AutoloadRegistry {
               entry -> {
                 entry.ifPresent(
                     plugin -> {
+                      if (!isSupportedExtensionType(plugin.extension)) {
+                        LOGGER.warning(
+                            String.format(
+                                "Skipping unsupported extension type for hosted loading: %s",
+                                plugin.extension.getName()));
+
+                        return;
+                      }
+
                       ExtensionPoint instance;
 
                       try {
@@ -191,6 +214,15 @@ class AutoloadRegistry {
     final var extensions = registration.extensions();
 
     for (final var extensionType : extensions.keySet()) {
+      if (!isSupportedExtensionType(extensionType)) {
+        LOGGER.warning(
+            String.format(
+                "Skipping deregistration for unsupported extension type: %s",
+                extensionType.getName()));
+
+        continue;
+      }
+
       final var extensionList = Jenkins.get().getExtensionList(extensionType);
 
       for (final var extension : extensions.get(extensionType)) {
@@ -227,6 +259,16 @@ class AutoloadRegistry {
               .forEach(
                   entry -> {
                     final var extensionType = entry.getKey();
+
+                    if (!isSupportedExtensionType(extensionType)) {
+                      LOGGER.warning(
+                          String.format(
+                              "Skipping registration for unsupported extension type: %s",
+                              extensionType.getName()));
+
+                      return;
+                    }
+
                     final var extensionList =
                         Jenkins.get().getExtensionList((Class<ExtensionPoint>) extensionType);
 
@@ -276,6 +318,111 @@ class AutoloadRegistry {
       return;
     }
 
-    // TODO(garrett): Perform Jenkins-level logic to do a dynamic reload
+    final var updatedRegistration = this.createRegistrationFromJar(pluginPath.toFile());
+
+    if (updatedRegistration.isEmpty()) {
+      LOGGER.warning(String.format("Failed to load updated plugin from %s", pluginPath.toString()));
+
+      return;
+    }
+
+    final var newRegistration = updatedRegistration.get();
+    final Set<Class<? extends ExtensionPoint>> extensionTypes = new HashSet<>();
+
+    extensionTypes.addAll(currentRegistration.extensions().keySet());
+    extensionTypes.addAll(newRegistration.extensions().keySet());
+
+    for (final var extensionType : extensionTypes) {
+      if (!isSupportedExtensionType(extensionType)) {
+        LOGGER.warning(
+            String.format(
+                "Skipping reload for unsupported extension type: %s", extensionType.getName()));
+
+        continue;
+      }
+
+      final var oldInstances =
+          currentRegistration.extensions().getOrDefault(extensionType, List.of());
+      final var newInstances = newRegistration.extensions().getOrDefault(extensionType, List.of());
+
+      try {
+        swapExtensionList(extensionType, oldInstances, newInstances);
+      } catch (ReflectiveOperationException ex) {
+        LOGGER.severe(
+            String.format(
+                "Failed to atomically reload extension type %s from %s: %s",
+                extensionType.getName(), pluginPath.toString(), ex.getMessage()));
+
+        return;
+      }
+    }
+
+    try {
+      currentRegistration.loader().close();
+    } catch (IOException ex) {
+      LOGGER.warning(
+          String.format(
+              "Failed to close class loader for previous registration at %s: %s",
+              pluginPath.toString(), ex.getMessage()));
+    }
+
+    this.registrations.put(pluginPath, newRegistration);
+
+    LOGGER.info(String.format("Re-registration complete: %s", pluginPath.toString()));
+  }
+
+  @SuppressWarnings("unchecked")
+  private void swapExtensionList(
+      Class<? extends ExtensionPoint> extensionType,
+      List<? extends ExtensionPoint> oldInstances,
+      List<? extends ExtensionPoint> newInstances)
+      throws ReflectiveOperationException {
+    final var extensionList =
+        (ExtensionList<ExtensionPoint>) Jenkins.get().getExtensionList(extensionType);
+
+    final Field extensionsField = ExtensionList.class.getDeclaredField("extensions");
+    final Field legacyField = ExtensionList.class.getDeclaredField("legacyInstances");
+    final Method sortMethod = ExtensionList.class.getDeclaredMethod("sort", List.class);
+
+    extensionsField.setAccessible(true);
+    legacyField.setAccessible(true);
+    sortMethod.setAccessible(true);
+
+    synchronized (extensionList) {
+      final Set<ExtensionPoint> oldInstancesSet = new HashSet<>(oldInstances);
+      final List<ExtensionComponent<ExtensionPoint>> workingComponents =
+          new ArrayList<>(extensionList.getComponents());
+
+      workingComponents.removeIf(component -> oldInstancesSet.contains(component.getInstance()));
+      newInstances.stream()
+          .map(instance -> new ExtensionComponent<>((ExtensionPoint) instance))
+          .forEach(workingComponents::add);
+
+      final var sortedComponents =
+          (List<ExtensionComponent<ExtensionPoint>>)
+              sortMethod.invoke(extensionList, workingComponents);
+
+      extensionsField.set(extensionList, sortedComponents);
+
+      final var legacyInstances =
+          (CopyOnWriteArrayList<ExtensionComponent<ExtensionPoint>>) legacyField.get(extensionList);
+
+      legacyInstances.removeIf(component -> oldInstancesSet.contains(component.getInstance()));
+      newInstances.stream()
+          .map(instance -> new ExtensionComponent<>((ExtensionPoint) instance))
+          .forEach(legacyInstances::add);
+    }
+
+    fireExtensionListChangeListeners(extensionList);
+  }
+
+  // NOTE(garrett): While there's an API for this, it's restricted from being
+  // called outside the class so we have to do it via reflection in order not to
+  // cause the packaging to fail
+  private void fireExtensionListChangeListeners(ExtensionList<?> extensionList)
+      throws ReflectiveOperationException {
+    final Method fireMethod = ExtensionList.class.getDeclaredMethod("fireOnChangeListeners");
+    fireMethod.setAccessible(true);
+    fireMethod.invoke(extensionList);
   }
 }
