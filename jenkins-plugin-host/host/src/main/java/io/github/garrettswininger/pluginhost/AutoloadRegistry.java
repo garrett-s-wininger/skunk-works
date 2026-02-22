@@ -1,7 +1,6 @@
 package io.github.garrettswininger.pluginhost;
 
 import hudson.ExtensionPoint;
-import hudson.model.ManagementLink;
 import io.github.garrettswininger.hosting.DynamicPlugin;
 import io.github.garrettswininger.hosting.Hosted;
 import java.io.File;
@@ -20,86 +19,22 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.logging.Logger;
-import jenkins.model.Jenkins;
-
-record PreparedManagementLinkRegistration(
-    byte[] digest, URLClassLoader loader, List<ManagementLink> delegates) {}
-
-record HostedRegistration(
-    byte[] digest, URLClassLoader loader, List<VersionedManagementLink> links) {}
-
-class VersionedManagementLink extends ManagementLink {
-  private final AtomicReference<ManagementLink> delegate;
-
-  VersionedManagementLink(ManagementLink initialDelegate) {
-    this.delegate = new AtomicReference<>(initialDelegate);
-  }
-
-  void swap(ManagementLink newDelegate) {
-    this.delegate.set(newDelegate);
-  }
-
-  private ManagementLink currentDelegate() {
-    return this.delegate.get();
-  }
-
-  @Override
-  public String getIconFileName() {
-    return currentDelegate().getIconFileName();
-  }
-
-  @Override
-  public String getDisplayName() {
-    return currentDelegate().getDisplayName();
-  }
-
-  @Override
-  public String getDescription() {
-    return currentDelegate().getDescription();
-  }
-
-  @Override
-  public String getUrlName() {
-    return currentDelegate().getUrlName();
-  }
-
-  @Override
-  public boolean getRequiresConfirmation() {
-    return currentDelegate().getRequiresConfirmation();
-  }
-
-  @Override
-  public hudson.security.Permission getRequiredPermission() {
-    return currentDelegate().getRequiredPermission();
-  }
-
-  @Override
-  public boolean getRequiresPOST() {
-    return currentDelegate().getRequiresPOST();
-  }
-
-  @Override
-  public Category getCategory() {
-    return currentDelegate().getCategory();
-  }
-
-  @Override
-  public jenkins.management.Badge getBadge() {
-    return currentDelegate().getBadge();
-  }
-}
 
 class AutoloadRegistry {
   private static final Logger LOGGER = Logger.getLogger(AutoloadRegistry.class.getName());
 
   private final Map<Path, HostedRegistration> registrations;
+  private final Map<Class<? extends ExtensionPoint>, ExtensionAdapter<?, ?>> adapters;
 
   AutoloadRegistry() {
     this.registrations = new HashMap<>();
+    this.adapters = new HashMap<>();
+
+    final ExtensionAdapter<?, ?> managementLinkAdapter = new ManagementLinkAdapter();
+    this.adapters.put(managementLinkAdapter.extensionType(), managementLinkAdapter);
   }
 
   private byte[] calculateDigest(Path path) {
@@ -163,7 +98,9 @@ class AutoloadRegistry {
     DynamicPlugin<? extends ExtensionPoint, ? extends ExtensionPoint> plugin;
 
     try {
-      plugin = (DynamicPlugin) clazz.getDeclaredConstructor().newInstance();
+      plugin =
+          (DynamicPlugin<? extends ExtensionPoint, ? extends ExtensionPoint>)
+              clazz.getDeclaredConstructor().newInstance();
     } catch (Exception ex) {
       LOGGER.warning(String.format("Failed to instantiate dynamic plugin: %s", expectedClassName));
 
@@ -178,9 +115,7 @@ class AutoloadRegistry {
     return Optional.of(plugin);
   }
 
-  // NOTE(garrett): We must manually reify types at runtime for loaded
-  // extensions
-  private Optional<PreparedManagementLinkRegistration> createRegistrationFromJar(File file) {
+  private Optional<PreparedRegistration> createRegistrationFromJar(File file) {
     final URLClassLoader loader;
 
     try {
@@ -194,7 +129,7 @@ class AutoloadRegistry {
       return Optional.empty();
     }
 
-    final List<ManagementLink> delegates = new ArrayList<>();
+    final Map<Class<? extends ExtensionPoint>, List<ExtensionPoint>> discovered = new HashMap<>();
 
     try (var jar = new JarFile(file)) {
       jar.stream()
@@ -204,7 +139,9 @@ class AutoloadRegistry {
               entry -> {
                 entry.ifPresent(
                     plugin -> {
-                      if (!ManagementLink.class.isAssignableFrom(plugin.extension)) {
+                      final var adapter = this.adapters.get(plugin.extension);
+
+                      if (adapter == null) {
                         LOGGER.fine(
                             String.format(
                                 "Skipping unsupported extension type for hosted loading: %s",
@@ -225,7 +162,7 @@ class AutoloadRegistry {
                         return;
                       }
 
-                      if (!(instance instanceof ManagementLink)) {
+                      if (!plugin.extension.isInstance(instance)) {
                         LOGGER.warning(
                             String.format(
                                 "Skipping extension due to incompatible instance type: %s",
@@ -233,7 +170,9 @@ class AutoloadRegistry {
                         return;
                       }
 
-                      delegates.add((ManagementLink) instance);
+                      discovered
+                          .computeIfAbsent(plugin.extension, ignored -> new ArrayList<>())
+                          .add(instance);
                     });
               });
     } catch (IOException ex) {
@@ -253,8 +192,8 @@ class AutoloadRegistry {
       return Optional.empty();
     }
 
-    if (delegates.isEmpty()) {
-      LOGGER.info(String.format("No ManagementLink extensions found in %s", file.getPath()));
+    if (discovered.isEmpty()) {
+      LOGGER.info(String.format("No supported hosted extensions found in %s", file.getPath()));
 
       try {
         loader.close();
@@ -268,8 +207,31 @@ class AutoloadRegistry {
       return Optional.empty();
     }
 
-    return Optional.of(
-        new PreparedManagementLinkRegistration(calculateDigest(file.toPath()), loader, delegates));
+    final Map<Class<? extends ExtensionPoint>, List<? extends ExtensionPoint>> delegates =
+        new HashMap<>();
+    discovered.forEach((type, instances) -> delegates.put(type, List.copyOf(instances)));
+
+    return Optional.of(new PreparedRegistration(calculateDigest(file.toPath()), loader, delegates));
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  private RegisteredExtension registerWithAdapter(
+      ExtensionAdapter<?, ?> adapter, List<? extends ExtensionPoint> delegates) {
+    final List wrappers = ((ExtensionAdapter) adapter).registerStable((List) delegates);
+    return new RegisteredExtension(adapter, wrappers);
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  private void swapWithAdapter(
+      RegisteredExtension registeredExtension, List<? extends ExtensionPoint> newDelegates) {
+    ((ExtensionAdapter) registeredExtension.adapter())
+        .swap((List) registeredExtension.wrappers(), (List) newDelegates);
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  private void deregisterWithAdapter(RegisteredExtension registeredExtension) {
+    ((ExtensionAdapter) registeredExtension.adapter())
+        .deregister((List) registeredExtension.wrappers());
   }
 
   void deregister(Path pluginPath) {
@@ -282,13 +244,9 @@ class AutoloadRegistry {
       return;
     }
 
-    final var extensionList = Jenkins.get().getExtensionList(ManagementLink.class);
-
-    for (final var link : registration.links()) {
-      extensionList.remove(link);
-
-      LOGGER.info(String.format("Removed %s extension", link.getClass().getName()));
-    }
+    registration
+        .extensions()
+        .forEach((ignored, registeredExtension) -> deregisterWithAdapter(registeredExtension));
 
     try {
       registration.loader().close();
@@ -307,27 +265,55 @@ class AutoloadRegistry {
 
     preparedRegistration.ifPresent(
         loadedRegistration -> {
-          final var extensionList = Jenkins.get().getExtensionList(ManagementLink.class);
-          final List<VersionedManagementLink> links = new ArrayList<>();
+          final Map<Class<? extends ExtensionPoint>, RegisteredExtension> registered =
+              new HashMap<>();
 
           loadedRegistration
               .delegates()
               .forEach(
-                  delegate -> {
-                    final var versionedLink = new VersionedManagementLink(delegate);
-                    extensionList.add(0, versionedLink);
-                    links.add(versionedLink);
+                  (extensionType, delegates) -> {
+                    final var adapter = this.adapters.get(extensionType);
 
-                    LOGGER.info(
-                        String.format(
-                            "%s extension successfully installed into the instance",
-                            delegate.getClass().getName()));
+                    if (adapter == null) {
+                      LOGGER.warning(
+                          String.format(
+                              "No adapter found during registration for extension type: %s",
+                              extensionType.getName()));
+                      return;
+                    }
+
+                    final var registeredExtension = registerWithAdapter(adapter, delegates);
+                    registered.put(extensionType, registeredExtension);
+
+                    delegates.forEach(
+                        delegate ->
+                            LOGGER.info(
+                                String.format(
+                                    "%s extension successfully installed into the instance",
+                                    delegate.getClass().getName())));
                   });
+
+          if (registered.isEmpty()) {
+            LOGGER.warning(
+                String.format(
+                    "No extensions were registered from %s after adapter filtering", pluginPath));
+
+            try {
+              loadedRegistration.loader().close();
+            } catch (IOException ex) {
+              LOGGER.warning(
+                  String.format(
+                      "Failed to close class loader for %s after empty registration: %s",
+                      pluginPath, ex.getMessage()));
+            }
+
+            return;
+          }
 
           this.registrations.put(
               pluginPath,
               new HostedRegistration(
-                  loadedRegistration.digest(), loadedRegistration.loader(), links));
+                  loadedRegistration.digest(), loadedRegistration.loader(), registered));
         });
   }
 
@@ -369,11 +355,9 @@ class AutoloadRegistry {
 
     final var newRegistration = updatedRegistration.get();
 
-    if (newRegistration.delegates().size() != currentRegistration.links().size()) {
+    if (!newRegistration.delegates().keySet().equals(currentRegistration.extensions().keySet())) {
       LOGGER.warning(
-          String.format(
-              "Cannot atomically reload %s because extension count changed (%d => %d)",
-              pluginPath, currentRegistration.links().size(), newRegistration.delegates().size()));
+          String.format("Cannot atomically reload %s because extension types changed", pluginPath));
 
       try {
         newRegistration.loader().close();
@@ -387,8 +371,36 @@ class AutoloadRegistry {
       return;
     }
 
-    for (int i = 0; i < currentRegistration.links().size(); i++) {
-      currentRegistration.links().get(i).swap(newRegistration.delegates().get(i));
+    for (final var extensionType : currentRegistration.extensions().keySet()) {
+      final var registered = currentRegistration.extensions().get(extensionType);
+      final var newDelegates = newRegistration.delegates().get(extensionType);
+
+      if (newDelegates == null || registered.wrappers().size() != newDelegates.size()) {
+        LOGGER.warning(
+            String.format(
+                "Cannot atomically reload %s because extension count changed for %s (%d => %d)",
+                pluginPath,
+                extensionType.getName(),
+                registered.wrappers().size(),
+                newDelegates == null ? 0 : newDelegates.size()));
+
+        try {
+          newRegistration.loader().close();
+        } catch (IOException ex) {
+          LOGGER.warning(
+              String.format(
+                  "Failed to close class loader for rejected reload at %s: %s",
+                  pluginPath, ex.getMessage()));
+        }
+
+        return;
+      }
+    }
+
+    for (final var extensionType : currentRegistration.extensions().keySet()) {
+      final var registered = currentRegistration.extensions().get(extensionType);
+      final var newDelegates = newRegistration.delegates().get(extensionType);
+      swapWithAdapter(registered, newDelegates);
     }
 
     try {
@@ -403,7 +415,7 @@ class AutoloadRegistry {
     this.registrations.put(
         pluginPath,
         new HostedRegistration(
-            newRegistration.digest(), newRegistration.loader(), currentRegistration.links()));
+            newRegistration.digest(), newRegistration.loader(), currentRegistration.extensions()));
 
     LOGGER.info(String.format("Re-registration complete: %s", pluginPath.toString()));
   }
