@@ -1,3 +1,5 @@
+package io.github.garrettswininger.example;
+
 import hudson.model.ManagementLink;
 import io.github.garrettswininger.hosting.DynamicPlugin;
 import io.github.garrettswininger.hosting.Hosted;

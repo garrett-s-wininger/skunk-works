@@ -1,6 +1,5 @@
 package io.github.garrettswininger.pluginhost;
 
-import hudson.ExtensionPoint;
 import io.github.garrettswininger.hosting.DynamicPlugin;
 import io.github.garrettswininger.hosting.Hosted;
 import java.io.File;
@@ -25,9 +24,7 @@ import java.util.logging.Logger;
 import jenkins.model.Jenkins;
 
 record HostedRegistration(
-    byte[] digest,
-    URLClassLoader loader,
-    Map<Class<? extends ExtensionPoint>, List<? extends ExtensionPoint>> extensions) {}
+    byte[] digest, URLClassLoader loader, Map<Class<?>, List<?>> extensions) {}
 
 class AutoloadRegistry {
   private static final Logger LOGGER = Logger.getLogger(AutoloadRegistry.class.getName());
@@ -67,11 +64,7 @@ class AutoloadRegistry {
     }
   }
 
-  // NOTE(garrett): We have to do unchecked casts here as we need to manually
-  // reify extension types at runtime
-  @SuppressWarnings("unchecked")
-  private Optional<DynamicPlugin<? extends ExtensionPoint, ? extends ExtensionPoint>> entryToPlugin(
-      ClassLoader loader, JarEntry entry) {
+  private Optional<DynamicPlugin<?, ?>> entryToPlugin(ClassLoader loader, JarEntry entry) {
     final var expectedClassName = entry.getName().replace("/", ".").replace(".class", "");
 
     Class<?> clazz;
@@ -96,10 +89,10 @@ class AutoloadRegistry {
       return Optional.empty();
     }
 
-    DynamicPlugin<? extends ExtensionPoint, ? extends ExtensionPoint> plugin;
+    DynamicPlugin<?, ?> plugin;
 
     try {
-      plugin = (DynamicPlugin) clazz.getDeclaredConstructor().newInstance();
+      plugin = (DynamicPlugin<?, ?>) clazz.getDeclaredConstructor().newInstance();
     } catch (Exception ex) {
       LOGGER.warning(String.format("Failed to instantiate dynamic plugin: %s", expectedClassName));
 
@@ -131,8 +124,7 @@ class AutoloadRegistry {
       return Optional.empty();
     }
 
-    final Map<Class<? extends ExtensionPoint>, List<? extends ExtensionPoint>> pathRegistrations =
-        new HashMap<>();
+    final Map<Class<?>, List<?>> pathRegistrations = new HashMap<>();
 
     try (var jar = new JarFile(file)) {
       jar.stream()
@@ -142,7 +134,7 @@ class AutoloadRegistry {
               entry -> {
                 entry.ifPresent(
                     plugin -> {
-                      ExtensionPoint instance;
+                      final Object instance;
 
                       try {
                         instance = plugin.getInstance();
@@ -158,9 +150,9 @@ class AutoloadRegistry {
                       if (pathRegistrations.containsKey(plugin.extension)) {
                         final var registeredExtensions = pathRegistrations.get(plugin.extension);
 
-                        ((List<ExtensionPoint>) registeredExtensions).add(instance);
+                        ((List<Object>) registeredExtensions).add(instance);
                       } else {
-                        final List<ExtensionPoint> instances = new ArrayList<>();
+                        final List<Object> instances = new ArrayList<>();
 
                         instances.add(instance);
                         pathRegistrations.put(plugin.extension, instances);
@@ -228,14 +220,14 @@ class AutoloadRegistry {
                   entry -> {
                     final var extensionType = entry.getKey();
                     final var extensionList =
-                        Jenkins.get().getExtensionList((Class<ExtensionPoint>) extensionType);
+                        Jenkins.get().getExtensionList((Class<?>) extensionType);
 
                     entry.getValue().stream()
                         .forEach(
                             instance -> {
                               // NOTE(garrett): The `add` method is deprecated but `add` with
                               // an index is not, though they do the same thing under the hood
-                              extensionList.add(0, instance);
+                              ((List<Object>) extensionList).add(0, instance);
 
                               LOGGER.info(
                                   String.format(

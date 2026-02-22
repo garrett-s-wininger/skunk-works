@@ -1,3 +1,5 @@
+package io.github.garrettswininger.example;
+
 import hudson.model.ManagementLink;
 
 public class Action extends ManagementLink {
