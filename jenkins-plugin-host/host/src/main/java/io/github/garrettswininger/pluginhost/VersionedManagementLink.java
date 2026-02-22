@@ -2,8 +2,9 @@ package io.github.garrettswininger.pluginhost;
 
 import hudson.model.ManagementLink;
 import java.util.concurrent.atomic.AtomicReference;
+import org.kohsuke.stapler.StaplerProxy;
 
-class VersionedManagementLink extends ManagementLink {
+class VersionedManagementLink extends ManagementLink implements StaplerProxy {
   private final AtomicReference<ManagementLink> delegate;
 
   VersionedManagementLink(ManagementLink initialDelegate) {
@@ -16,6 +17,11 @@ class VersionedManagementLink extends ManagementLink {
 
   private ManagementLink currentDelegate() {
     return this.delegate.get();
+  }
+
+  @Override
+  public Object getTarget() {
+    return currentDelegate();
   }
 
   @Override

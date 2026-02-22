@@ -1,3 +1,5 @@
+package io.github.garrettswininger.examplehosted;
+
 import hudson.model.TaskListener;
 import java.util.Set;
 import org.jenkinsci.plugins.workflow.steps.Step;

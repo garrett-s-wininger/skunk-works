@@ -1,3 +1,5 @@
+package io.github.garrettswininger.examplehosted;
+
 import hudson.model.ManagementLink;
 
 public class Action extends ManagementLink {
@@ -8,7 +10,7 @@ public class Action extends ManagementLink {
 
   @Override
   public String getDisplayName() {
-    return "My Custom Action 123";
+    return "My Custom Action";
   }
 
   @Override

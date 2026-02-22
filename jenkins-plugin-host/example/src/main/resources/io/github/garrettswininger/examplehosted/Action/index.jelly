@@ -1,0 +1,9 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j='jelly:core' xmlns:l='/lib/layout'>
+  <l:layout title='Hosted ManagementLink View'>
+    <l:main-panel>
+      <h1>Hosted ManagementLink View</h1>
+      <p>Version 1: This page is loaded from the hosted plugin JAR resource.</p>
+    </l:main-panel>
+  </l:layout>
+</j:jelly>

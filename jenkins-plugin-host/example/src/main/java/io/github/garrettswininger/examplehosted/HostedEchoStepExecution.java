@@ -1,3 +1,5 @@
+package io.github.garrettswininger.examplehosted;
+
 import hudson.model.TaskListener;
 import org.jenkinsci.plugins.workflow.steps.SynchronousStepExecution;
 
