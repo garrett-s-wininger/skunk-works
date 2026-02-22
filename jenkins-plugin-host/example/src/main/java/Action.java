@@ -8,7 +8,7 @@ public class Action extends ManagementLink {
 
   @Override
   public String getDisplayName() {
-    return "My Custom Action";
+    return "My Custom Action 123";
   }
 
   @Override
