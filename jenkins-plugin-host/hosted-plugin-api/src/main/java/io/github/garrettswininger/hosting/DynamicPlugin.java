@@ -1,9 +1,8 @@
 package io.github.garrettswininger.hosting;
 
-import hudson.ExtensionPoint;
 import java.lang.reflect.InvocationTargetException;
 
-public abstract class DynamicPlugin<T extends ExtensionPoint, U extends T> {
+public abstract class DynamicPlugin<T, U extends T> {
   public final Class<T> extension;
   public final Class<U> implementation;
 

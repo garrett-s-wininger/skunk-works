@@ -1,6 +1,5 @@
 package io.github.garrettswininger.pluginhost;
 
-import hudson.ExtensionPoint;
 import io.github.garrettswininger.hosting.DynamicPlugin;
 import io.github.garrettswininger.hosting.Hosted;
 import java.io.File;
@@ -21,13 +20,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 class AutoloadRegistry {
   private static final Logger LOGGER = Logger.getLogger(AutoloadRegistry.class.getName());
 
   private final Map<Path, HostedRegistration> registrations;
-  private final Map<Class<? extends ExtensionPoint>, ExtensionAdapter<?, ?>> adapters;
+  private final Map<Class<?>, ExtensionAdapter<?, ?>> adapters;
 
   AutoloadRegistry() {
     this.registrations = new HashMap<>();
@@ -35,6 +35,8 @@ class AutoloadRegistry {
 
     final ExtensionAdapter<?, ?> managementLinkAdapter = new ManagementLinkAdapter();
     this.adapters.put(managementLinkAdapter.extensionType(), managementLinkAdapter);
+    final ExtensionAdapter<?, ?> stepDescriptorAdapter = new StepDescriptorAdapter();
+    this.adapters.put(stepDescriptorAdapter.extensionType(), stepDescriptorAdapter);
   }
 
   private byte[] calculateDigest(Path path) {
@@ -69,8 +71,7 @@ class AutoloadRegistry {
   // NOTE(garrett): We have to do unchecked casts here as we need to manually
   // reify extension types at runtime
   @SuppressWarnings("unchecked")
-  private Optional<DynamicPlugin<? extends ExtensionPoint, ? extends ExtensionPoint>> entryToPlugin(
-      ClassLoader loader, JarEntry entry) {
+  private Optional<DynamicPlugin<?, ?>> entryToPlugin(ClassLoader loader, JarEntry entry) {
     final var expectedClassName = entry.getName().replace("/", ".").replace(".class", "");
 
     Class<?> clazz;
@@ -95,12 +96,10 @@ class AutoloadRegistry {
       return Optional.empty();
     }
 
-    DynamicPlugin<? extends ExtensionPoint, ? extends ExtensionPoint> plugin;
+    DynamicPlugin<?, ?> plugin;
 
     try {
-      plugin =
-          (DynamicPlugin<? extends ExtensionPoint, ? extends ExtensionPoint>)
-              clazz.getDeclaredConstructor().newInstance();
+      plugin = (DynamicPlugin<?, ?>) clazz.getDeclaredConstructor().newInstance();
     } catch (Exception ex) {
       LOGGER.warning(String.format("Failed to instantiate dynamic plugin: %s", expectedClassName));
 
@@ -129,7 +128,7 @@ class AutoloadRegistry {
       return Optional.empty();
     }
 
-    final Map<Class<? extends ExtensionPoint>, List<ExtensionPoint>> discovered = new HashMap<>();
+    final Map<Class<?>, List<Object>> discovered = new HashMap<>();
 
     try (var jar = new JarFile(file)) {
       jar.stream()
@@ -149,15 +148,17 @@ class AutoloadRegistry {
                         return;
                       }
 
-                      final ExtensionPoint instance;
+                      final Object instance;
 
                       try {
                         instance = plugin.getInstance();
                       } catch (Exception ex) {
-                        LOGGER.warning(
+                        LOGGER.log(
+                            Level.WARNING,
                             String.format(
-                                "Failed to instantiate extension (%s): %s",
-                                plugin.implementation.getName(), ex.getMessage()));
+                                "Failed to instantiate extension (%s)",
+                                plugin.implementation.getName()),
+                            ex);
 
                         return;
                       }
@@ -207,8 +208,7 @@ class AutoloadRegistry {
       return Optional.empty();
     }
 
-    final Map<Class<? extends ExtensionPoint>, List<? extends ExtensionPoint>> delegates =
-        new HashMap<>();
+    final Map<Class<?>, List<?>> delegates = new HashMap<>();
     discovered.forEach((type, instances) -> delegates.put(type, List.copyOf(instances)));
 
     return Optional.of(new PreparedRegistration(calculateDigest(file.toPath()), loader, delegates));
@@ -216,14 +216,13 @@ class AutoloadRegistry {
 
   @SuppressWarnings({"rawtypes", "unchecked"})
   private RegisteredExtension registerWithAdapter(
-      ExtensionAdapter<?, ?> adapter, List<? extends ExtensionPoint> delegates) {
+      ExtensionAdapter<?, ?> adapter, List<?> delegates) {
     final List wrappers = ((ExtensionAdapter) adapter).registerStable((List) delegates);
     return new RegisteredExtension(adapter, wrappers);
   }
 
   @SuppressWarnings({"rawtypes", "unchecked"})
-  private void swapWithAdapter(
-      RegisteredExtension registeredExtension, List<? extends ExtensionPoint> newDelegates) {
+  private void swapWithAdapter(RegisteredExtension registeredExtension, List<?> newDelegates) {
     ((ExtensionAdapter) registeredExtension.adapter())
         .swap((List) registeredExtension.wrappers(), (List) newDelegates);
   }
@@ -265,8 +264,7 @@ class AutoloadRegistry {
 
     preparedRegistration.ifPresent(
         loadedRegistration -> {
-          final Map<Class<? extends ExtensionPoint>, RegisteredExtension> registered =
-              new HashMap<>();
+          final Map<Class<?>, RegisteredExtension> registered = new HashMap<>();
 
           loadedRegistration
               .delegates()
