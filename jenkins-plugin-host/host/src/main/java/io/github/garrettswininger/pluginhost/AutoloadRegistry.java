@@ -55,7 +55,6 @@ record RegisteredJar(byte[] digest, URLClassLoader loader, Registry registry) {
     return new RegisteredJar(digestDriver.digest(), loader, registry);
   }
 }
-;
 
 class AutoloadRegistry {
   private static final Logger LOGGER = Logger.getLogger(AutoloadRegistry.class.getName());
@@ -208,9 +207,14 @@ class AutoloadRegistry {
   // point
   @SuppressWarnings("unchecked")
   void register(Path pluginPath) {
-    // LOGGER.info(String.format("Registering: %s", pluginPath.toString()));
+    LOGGER.info(String.format("Registering: %s", pluginPath.toString()));
 
-    // final var registration = this.createRegistrationFromJar(pluginPath.toFile());
+    try {
+      final var registration = RegisteredJar.fromFile(pluginPath.toFile());
+    } catch (IOException ex) {
+      LOGGER.warning(String.format("Failed to register plugin: %s", pluginPath.toString()));
+      return;
+    }
 
     // registration.ifPresent(
     //     pathRegistration -> {
