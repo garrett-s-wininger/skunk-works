@@ -9,6 +9,7 @@ import hudson.Extension;
 import hudson.model.RootAction;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,12 +45,12 @@ public final class HostedPluginFileSystemWatcher implements RootAction {
   }
 
   private void createDirectoryIfNotExists(File dir) {
-    if (!dir.exists()) {
-      try {
-        Files.createDirectory(dir.toPath());
-      } catch (IOException ex) {
-        LOGGER.severe(String.format("Failed to create directory: %s", ex.getMessage()));
-      }
+    try {
+      Files.createDirectory(dir.toPath());
+    } catch (FileAlreadyExistsException ex) {
+      // NOTE(garrett): The directory already exists, so we don't need to do anything
+    } catch (IOException ex) {
+      LOGGER.severe(String.format("Failed to create directory: %s", ex.getMessage()));
     }
   }
 

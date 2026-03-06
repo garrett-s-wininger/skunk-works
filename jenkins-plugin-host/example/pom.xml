@@ -18,6 +18,7 @@
     <dependency>
       <groupId>io.github.garrettswininger</groupId>
       <artifactId>hosted-plugin-api</artifactId>
+      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.jenkins-ci.main</groupId>

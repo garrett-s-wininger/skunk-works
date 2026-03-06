@@ -3,7 +3,7 @@ package io.github.garrettswininger.hosting;
 import hudson.model.ManagementLink;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class ManagementLinkProxy extends ManagementLink implements Extension<ManagementLink> {
+public class ManagementLinkProxy extends ManagementLink implements Proxy<ManagementLink> {
   private final AtomicReference<ManagementLink> implementation;
 
   public ManagementLinkProxy(ManagementLink implementation) {
@@ -16,13 +16,13 @@ public class ManagementLinkProxy extends ManagementLink implements Extension<Man
   }
 
   @Override
-  public ManagementLink getImplementation() {
-    return this.implementation.get();
+  public Class<ManagementLink> getExtensionPoint() {
+    return ManagementLink.class;
   }
 
   @Override
-  public Class<ManagementLink> getExtensionPoint() {
-    return ManagementLink.class;
+  public ManagementLink getImplementation() {
+    return this.implementation.get();
   }
 
   @Override
